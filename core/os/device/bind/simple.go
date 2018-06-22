@@ -80,7 +80,7 @@ func (b *Simple) FileContents(ctx context.Context, path string) (string, error) 
 }
 
 // RemoveFile removes the given file from the device
-func (b* Simple) RemoveFile(ctx context.Context, path string) error {
+func (b *Simple) RemoveFile(ctx context.Context, path string) error {
 	return os.Remove(path)
 }
 
@@ -93,6 +93,74 @@ func (b *Simple) GetEnv(ctx context.Context) (*shell.Env, error) {
 // It returns a new port number to connect to on localhost
 func (b *Simple) SetupLocalPort(ctx context.Context, port int) (int, error) {
 	return port, nil
+}
+
+// ListFiles returns the executables in a particular directory as given by path
+func (b *Simple) ListExecutables(ctx context.Context, path string) ([]string, error) {
+	if path == "" {
+		path = "."
+	}
+	rets := []string{}
+	infos, err := ioutil.ReadDir(path)
+	if err != nil {
+		return nil, err
+	}
+	for _, inf := range infos {
+		if inf.Mode().IsRegular() && (inf.Mode()&0500) == 0500 {
+			rets = append(rets, inf.Name())
+		}
+	}
+	return rets, nil
+}
+
+// ListDirectories returns a list of directories rooted at a particular path
+func (b *Simple) ListDirectories(ctx context.Context, path string) ([]string, error) {
+	if path == "" {
+		path = "."
+	}
+	rets := []string{}
+	infos, err := ioutil.ReadDir(path)
+	if err != nil {
+		return nil, err
+	}
+	for _, inf := range infos {
+		if inf.Mode().IsDir() {
+			rets = append(rets, inf.Name())
+		}
+	}
+	return rets, nil
+}
+
+// ListFiles returns the executables in a particular directory as given by path
+func (b *Simple) IsFile(ctx context.Context, path string) (bool, error) {
+	if path == "" {
+		path = "."
+	}
+
+	f, err := os.Stat(path)
+	if err != nil {
+		return false, err
+	}
+	if f.Mode().IsRegular() {
+		return true, nil
+	}
+	return false, nil
+}
+
+// ListDirectories returns a list of directories rooted at a particular path
+func (b *Simple) IsDirectory(ctx context.Context, path string) (bool, error) {
+	if path == "" {
+		path = "."
+	}
+
+	f, err := os.Stat(path)
+	if err != nil {
+		return false, err
+	}
+	if f.Mode().IsDir() {
+		return true, nil
+	}
+	return false, nil
 }
 
 // ABI implements the Device interface returning the first ABI from the Information, or UnknownABI if it has none.

@@ -748,3 +748,18 @@ func ShallowEqual(a, b Node) bool {
 	b.SetParent(nil)
 	return reflect.DeepEqual(a, b)
 }
+
+func (i *ID) SameAs(o *ID) bool {
+	if i == nil || o == nil {
+		return false
+	}
+	if len(i.Data) != len(o.Data) {
+		return false
+	}
+	for ii := range i.Data {
+		if i.Data[ii] != o.Data[ii] {
+			return false
+		}
+	}
+	return true
+}

@@ -17,6 +17,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"sync/atomic"
 	"time"
@@ -364,4 +365,73 @@ func (s *grpcServer) ClientEvent(ctx xctx.Context, req *service.ClientEventReque
 		return nil, err
 	}
 	return &service.ClientEventResponse{}, nil
+}
+
+func (s *grpcServer) TraceTargetTreeNode(ctx xctx.Context, req *service.TraceTargetTreeRequest) (*service.TraceTargetTreeResponse, error) {
+	defer s.inRPC()()
+	res, err := s.handler.TraceTargetTreeNode(s.bindCtx(ctx), req)
+	if err := service.NewError(err); err != nil {
+		return &service.TraceTargetTreeResponse{Val: &service.TraceTargetTreeResponse_Error{Error: err}}, nil
+	}
+	return &service.TraceTargetTreeResponse{Val: &service.TraceTargetTreeResponse_Node{Node: res}}, nil
+}
+
+func (s *grpcServer) FindTraceTarget(ctx xctx.Context, req *service.FindTraceTargetRequest) (*service.TraceTargetTreeResponse, error) {
+	defer s.inRPC()()
+	res, err := s.handler.FindTraceTarget(s.bindCtx(ctx), req)
+	if err := service.NewError(err); err != nil {
+		return &service.TraceTargetTreeResponse{Val: &service.TraceTargetTreeResponse_Error{Error: err}}, nil
+	}
+	return &service.TraceTargetTreeResponse{Val: &service.TraceTargetTreeResponse_Node{Node: res}}, nil
+}
+
+func (s *grpcServer) Trace(conn service.Gapid_TraceServer) error {
+	ctx := s.bindCtx(conn.Context())
+	t, err := s.handler.Trace(ctx)
+	if err != nil {
+		return err
+	}
+	sig, f := task.NewSignal()
+	var ret_err error
+	go func() {
+		for {
+			req, err := conn.Recv()
+			if err == io.EOF {
+				f(ctx)
+				return
+			}
+			if err != nil {
+				ret_err = err
+				f(ctx)
+				return
+			}
+
+			switch r := req.Action.(type) {
+			case *service.TraceRequest_Initialize:
+				resp, err := t.Initialize(r.Initialize)
+				if err := service.NewError(err); err != nil {
+					r := service.TraceResponse{&service.TraceResponse_Error{
+						err,
+					}}
+					conn.Send(&r)
+					f(ctx)
+					return
+				}
+				conn.Send(&service.TraceResponse{&service.TraceResponse_Status{resp}})
+			case *service.TraceRequest_QueryEvent:
+				resp, err := t.Event(r.QueryEvent)
+				if err := service.NewError(err); err != nil {
+					r := service.TraceResponse{&service.TraceResponse_Error{
+						err,
+					}}
+					conn.Send(&r)
+					f(ctx)
+					return
+				}
+				conn.Send(&service.TraceResponse{&service.TraceResponse_Status{resp}})
+			}
+		}
+	}()
+	sig.Wait(ctx)
+	return ret_err
 }

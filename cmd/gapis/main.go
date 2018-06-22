@@ -41,7 +41,9 @@ import (
 	"github.com/google/gapid/gapis/replay"
 	"github.com/google/gapid/gapis/server"
 	"github.com/google/gapid/gapis/service"
+	"github.com/google/gapid/gapis/service/path"
 	"github.com/google/gapid/gapis/stringtable"
+	"github.com/google/gapid/gapis/trace"
 
 	// Extensions
 	_ "github.com/google/gapid/gapis/extensions/unity"
@@ -95,13 +97,18 @@ func run(ctx context.Context) error {
 	r := bind.NewRegistry()
 	ctx = bind.PutRegistry(ctx, r)
 	m := replay.New(ctx)
+	t := trace.New(ctx)
 	ctx = replay.PutManager(ctx, m)
 	ctx = database.Put(ctx, database.NewInMemory(ctx))
+	ctx = trace.PutManager(ctx, t)
 
 	grpclog.SetLogger(log.From(ctx))
 
+	var hostDevice *path.Device
+
 	if *addLocalDevice {
 		host := bind.Host(ctx)
+		hostDevice = path.NewDevice(host.Instance().Id.ID())
 		r.AddDevice(ctx, host)
 		r.SetDeviceProperty(ctx, host, client.LaunchArgsKey, text.SplitArgs(*gapirArgStr))
 	}
@@ -130,11 +137,12 @@ func run(ctx context.Context) error {
 
 	return server.Listen(ctx, *rpc, server.Config{
 		Info: &service.ServerInfo{
-			Name:         host.Instance(ctx).Name,
-			VersionMajor: uint32(app.Version.Major),
-			VersionMinor: uint32(app.Version.Minor),
-			VersionPoint: uint32(app.Version.Point),
-			Features:     features,
+			Name:              host.Instance(ctx).Name,
+			VersionMajor:      uint32(app.Version.Major),
+			VersionMinor:      uint32(app.Version.Minor),
+			VersionPoint:      uint32(app.Version.Point),
+			Features:          features,
+			ServerLocalDevice: hostDevice,
 		},
 		StringTables:     loadStrings(ctx),
 		EnableLocalFiles: *enableLocalFiles,
