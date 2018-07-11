@@ -93,37 +93,18 @@ public class Tracer {
     public void stop();
   }
 
-  public static enum Api {
-    GLES("OpenGL ES"), Vulkan("Vulkan");
-
-    public final String displayName;
-
-    private Api(String displayName) {
-      this.displayName = displayName;
-    }
-
-    public static Api parse(String name) {
-      try {
-        return Api.valueOf(name);
-      } catch (IllegalArgumentException e) {
-        return null;
-      }
-    }
-  }
-
-
   /**
    * Contains information about how and what application to trace.
    */
   public static abstract class TraceRequest {
-    public final Api api;
+    public final String api;
     public final File output;
     public final int frameCount;
     public final boolean midExecution;
     public final boolean disableBuffering;
 
     public TraceRequest(
-        Api api, File output, int frameCount, boolean midExecution, boolean disableBuffering) {
+        String api, File output, int frameCount, boolean midExecution, boolean disableBuffering) {
       this.api = api;
       this.output = output;
       this.frameCount = frameCount;
@@ -132,9 +113,9 @@ public class Tracer {
     }
 
     public List<String> appendCommandLine(List<String> cmd) {
-      if (api != null) {
+      if (api != "") {
         cmd.add("-api");
-        cmd.add(api.name().toLowerCase());
+        cmd.add(api.toLowerCase());
       }
 
       cmd.add("-out");
@@ -176,14 +157,14 @@ public class Tracer {
     public final boolean clearCache;
     public final boolean disablePcs;
 
-    public AndroidTraceRequest(Api api, Device.Instance device, String action, String intentArgs,
+    public AndroidTraceRequest(String api, Device.Instance device, String action, String intentArgs,
         File output, int frameCount, boolean midExecution, boolean disableBuffering,
         boolean clearCache, boolean disablePcs) {
       this(api, device, null, null, action, intentArgs, output, frameCount, midExecution,
           disableBuffering, clearCache, disablePcs);
     }
 
-    public AndroidTraceRequest(Api api, Device.Instance device, String pkg, String activity,
+    public AndroidTraceRequest(String api, Device.Instance device, String pkg, String activity,
         String action, String intentArgs, File output, int frameCount, boolean midExecution,
         boolean disableBuffering, boolean clearCache, boolean disablePcs) {
       super(api, output, frameCount, midExecution, disableBuffering);
@@ -242,7 +223,7 @@ public class Tracer {
 
     public DesktopTraceRequest(File executable, String args, File cwd, File output,
         int frameCount, boolean midExecution, boolean disableBuffering) {
-      super(Api.Vulkan, output, frameCount, midExecution, disableBuffering);
+      super("Vulkan", output, frameCount, midExecution, disableBuffering);
       this.executable = executable;
       this.args = args;
       this.cwd = cwd;

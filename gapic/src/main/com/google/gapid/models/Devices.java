@@ -52,7 +52,7 @@ public class Devices {
   protected final ExceptionHandler handler;
   private final Client client;
   private Path.Device replayDevice;
-  private List<Device.Instance> devices;
+  private List<DeviceCaptureInfo> devices;
 
   public Devices(Shell shell, ExceptionHandler handler, Client client, Capture capture) {
     this.shell = shell;
@@ -120,17 +120,21 @@ public class Devices {
 
   public void loadDevices() {
     rpcController.start().listen(Futures.transformAsync(client.getDevices(), paths -> {
-      List<ListenableFuture<Service.Value>> results = Lists.newArrayList();
+      List<ListenableFuture<DeviceCaptureInfo>> results = Lists.newArrayList();
       for (Path.Device path : paths) {
-        results.add(client.get(Paths.toAny(path)));
+        ListenableFuture<Service.Value> dev = client.get(Paths.toAny(path));
+        ListenableFuture<Service.Value> props = client.get(Paths.traceInfo(path));
+        results.add(Futures.transform(Futures.allAsList(dev, props), l -> {
+          return new DeviceCaptureInfo(l.get(0).getDevice(), l.get(1).getTraceConfig());
+        }));
       }
       return Futures.allAsList(results);
-    }), new UiErrorCallback<List<Service.Value>, List<Device.Instance>, Void>(shell, LOG) {
+    }), new UiErrorCallback<List<DeviceCaptureInfo>, List<DeviceCaptureInfo>, Void>(shell, LOG) {
       @Override
-      protected ResultOrError<List<Device.Instance>, Void> onRpcThread(
-          Rpc.Result<List<Service.Value>> result) throws RpcException, ExecutionException {
+      protected ResultOrError<List<DeviceCaptureInfo>, Void> onRpcThread(
+          Rpc.Result<List<DeviceCaptureInfo>> result) throws RpcException, ExecutionException {
         try {
-          return success(result.get().stream().map(Service.Value::getDevice).collect(toList()));
+          return success(result.get());
         } catch (RpcException | ExecutionException e) {
           throttleLogRpcError(LOG, "LoadData error", e);
           return error(null);
@@ -138,7 +142,7 @@ public class Devices {
       }
 
       @Override
-      protected void onUiThreadSuccess(List<Device.Instance> result) {
+      protected void onUiThreadSuccess(List<DeviceCaptureInfo> result) {
         updateDevices(result);
       }
 
@@ -149,7 +153,7 @@ public class Devices {
     });
   }
 
-  protected void updateDevices(List<Device.Instance> newDevices) {
+  protected void updateDevices(List<DeviceCaptureInfo> newDevices) {
     devices = newDevices;
     listeners.fire().onCaptureDevicesLoaded();
   }
@@ -159,16 +163,13 @@ public class Devices {
   }
 
   public List<Device.Instance> getAllDevices() {
-    return devices;
+    return (devices == null)? null: 
+      devices.stream().map(info -> info.device).collect(toList());
   }
 
-  public List<Device.Instance> getCaptureDevices() {
-    // Only return Android devices.
-    return (devices == null) ? null : devices.stream().filter(Devices::isAndroid).collect(toList());
-  }
-
-  private static boolean isAndroid(Device.Instance device) {
-    return device.getConfiguration().getOS().getKind() == Device.OSKind.Android;
+  public List<DeviceCaptureInfo> getCaptureDevices() {
+    return devices.stream().filter(info -> info.traceConfiguration.getApisList().size() > 0).
+              collect(toList());
   }
 
   public void addListener(Listener listener) {
@@ -189,5 +190,20 @@ public class Devices {
      * Event indicating that the capture devices have been loaded.
      */
     public default void onCaptureDevicesLoaded() { /* empty */ }
+  }
+
+
+  /**
+   * Encapsulates information about a Device and what trace options
+   *  are valid for that device.
+   */
+  public static class DeviceCaptureInfo {
+    public Device.Instance device;
+    public Service.DeviceTraceConfiguration traceConfiguration;
+
+    DeviceCaptureInfo(Device.Instance device, Service.DeviceTraceConfiguration traceConfiguration) {
+      this.device = device;
+      this.traceConfiguration = traceConfiguration;
+    }
   }
 }
