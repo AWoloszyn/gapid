@@ -274,6 +274,7 @@ func (s *server) Get(ctx context.Context, p *path.Any) (interface{}, error) {
 		return nil, log.Errf(ctx, err, "Invalid path: %v", p)
 	}
 	v, err := resolve.Get(ctx, p)
+	log.E(ctx, "Got %T, %+v", v, v);
 	if err != nil {
 		return nil, err
 	}
@@ -513,7 +514,11 @@ func (r *Tracer) Event(req service.TraceEvent) (*service.StatusResponse, error) 
 	return resp, nil
 }
 
-func (r *Tracer) Dispose() { return }
+func (r *Tracer) Dispose() { 
+	r.stopFunc()
+	return 
+
+}
 
 func (s *server) Trace(ctx context.Context) (service.TraceHandler, error) {
 	startSignal, startFunc := task.NewSignal()

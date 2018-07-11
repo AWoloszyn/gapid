@@ -76,14 +76,11 @@ type Tracer interface {
 	CanUploadApplication() bool
 	// HasCache returns true if the device has an appliction cache that can be cleared
 	HasCache() bool
-	// CanUsePortFile returns true if a device running on this device can write
-	// to a port file
-	CanUsePortFile() bool
 	// CanSpecifyEnv() returns true if you can specify environment variables for the tracer
 	CanSpecifyEnv() bool
 
 	// TraceOptions returns API-specific trace options for this device
-	APITraceOptions() []APITraceOptions
+	APITraceOptions(ctx context.Context) []APITraceOptions
 	// GetTraceTargetNode returns a TraceTargetTreeNode for the given URI
 	// on the device
 	GetTraceTargetNode(ctx context.Context, uri string, iconDensity float32) (*TraceTargetTreeNode, error)

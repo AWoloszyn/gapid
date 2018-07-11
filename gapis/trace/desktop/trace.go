@@ -64,7 +64,7 @@ func (t *DesktopTracer) CanUsePortFile() bool {
 	return true
 }
 
-func (t *DesktopTracer) APITraceOptions() []tracer.APITraceOptions {
+func (t *DesktopTracer) APITraceOptions(ctx context.Context) []tracer.APITraceOptions {
 	options := make([]tracer.APITraceOptions, 0, 1)
 	if len(t.b.Instance().Configuration.Drivers.Vulkan.PhysicalDevices) > 0 {
 		options = append(options, tracer.VulkanTraceOptions())

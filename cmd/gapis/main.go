@@ -99,8 +99,8 @@ func run(ctx context.Context) error {
 	m := replay.New(ctx)
 	t := trace.New(ctx)
 	ctx = replay.PutManager(ctx, m)
-	ctx = database.Put(ctx, database.NewInMemory(ctx))
 	ctx = trace.PutManager(ctx, t)
+	ctx = database.Put(ctx, database.NewInMemory(ctx))
 
 	grpclog.SetLogger(log.From(ctx))
 

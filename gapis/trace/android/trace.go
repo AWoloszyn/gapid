@@ -47,9 +47,14 @@ type AndroidTracer struct {
 	lastPackageUpdate    time.Time
 }
 
-func (t *AndroidTracer) GetPackages(ctx context.Context, iconDensityScale float32) (*pkginfo.PackageList, error) {
-	if time.Since(t.lastPackageUpdate).Seconds() > packageUpdateTime ||
-		t.lastIconDensityScale != iconDensityScale {
+func (t *AndroidTracer) GetPackages(ctx context.Context, isRoot bool, iconDensityScale float32) (*pkginfo.PackageList, error) {
+	refresh := time.Since(t.lastPackageUpdate).Seconds() > packageUpdateTime ||
+		t.lastIconDensityScale != iconDensityScale
+
+	if t.packages != nil && !isRoot {
+		refresh = false
+	}
+	if refresh {
 		packages, err := gapidapk.PackageList(ctx, t.b, true, iconDensityScale)
 		if err != nil {
 			return nil, err
@@ -105,7 +110,7 @@ func (t *AndroidTracer) CanUsePortFile() bool {
 	return false
 }
 
-func (t *AndroidTracer) APITraceOptions() []tracer.APITraceOptions {
+func (t *AndroidTracer) APITraceOptions(ctx context.Context) []tracer.APITraceOptions {
 	options := make([]tracer.APITraceOptions, 0, 2)
 	if t.b.Instance().Configuration.Drivers.OpenGL.Version != "" {
 		options = append(options, tracer.GlesTraceOptions())
@@ -113,11 +118,12 @@ func (t *AndroidTracer) APITraceOptions() []tracer.APITraceOptions {
 	if len(t.b.Instance().Configuration.Drivers.Vulkan.PhysicalDevices) > 0 {
 		options = append(options, tracer.VulkanTraceOptions())
 	}
+	log.E(ctx, "Options!! %+v\n", t.b.Instance().Configuration.Drivers)
 	return options
 }
 
 func (t *AndroidTracer) GetTraceTargetNode(ctx context.Context, uri string, iconDensity float32) (*tracer.TraceTargetTreeNode, error) {
-	packages, err := t.GetPackages(ctx, iconDensity)
+	packages, err := t.GetPackages(ctx, uri == "", iconDensity)
 
 	if err != nil {
 		return nil, err
@@ -356,7 +362,7 @@ func (t *AndroidTracer) InstallPackage(ctx context.Context, o *tracer.TraceOptio
 
 func (t *AndroidTracer) getAction(ctx context.Context, pattern string) (string, error) {
 	re := regexp.MustCompile("(?i)" + pattern)
-	packages, err := t.GetPackages(ctx, t.lastIconDensityScale)
+	packages, err := t.GetPackages(ctx, pattern == "", t.lastIconDensityScale)
 	if err != nil {
 		return "", err
 	}

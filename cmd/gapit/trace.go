@@ -160,6 +160,10 @@ func (verb *traceVerb) Run(ctx context.Context, flags flag.FlagSet) error {
 	}
 	defer handler.Dispose()
 
+	defer app.AddInterruptHandler(func() {
+		handler.Dispose()
+	})()
+
 	status, err := handler.Initialize(options)
 	if err != nil {
 		return err
@@ -167,7 +171,7 @@ func (verb *traceVerb) Run(ctx context.Context, flags flag.FlagSet) error {
 	log.I(ctx, "Trace Status %+v", status)
 
 	handlerInstalled := false
-
+	
 	for {
 		time.Sleep(time.Second * 3)
 		status, err = handler.Event(service.TraceEvent_Status)
@@ -177,6 +181,9 @@ func (verb *traceVerb) Run(ctx context.Context, flags flag.FlagSet) error {
 		if err != nil {
 			log.I(ctx, "Error %+v", err)
 			return err
+		}
+		if status == nil {
+			return nil
 		}
 		if status.BytesCaptured > 0 {
 			if !handlerInstalled {

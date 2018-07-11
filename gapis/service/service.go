@@ -258,6 +258,8 @@ func NewValue(v interface{}) *Value {
 		return &Value{Val: &Value_ImageInfo{v}}
 	case *device.Instance:
 		return &Value{Val: &Value_Device{v}}
+	case *DeviceTraceConfiguration:
+		return &Value{&Value_TraceConfig{v}}
 
 	default:
 		if v := box.NewValue(v); v != nil {

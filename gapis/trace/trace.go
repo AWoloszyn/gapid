@@ -54,3 +54,33 @@ func Trace(ctx context.Context, device *path.Device, start task.Signal, options 
 	_, err = process.Capture(ctx, start, file, written)
 	return err
 }
+
+type TraceConfig struct {
+	ServerLocalPath bool // Are the paths server-local for this tracer
+	CanSpecifyCwd bool // Does it make sense to specify a CWD for this device
+	CanUploadApplication bool // Does this device support app upload
+	CanSpecifyEnv bool // Does this device support environment variables
+	HasCache bool // Does this device have a clearable cache
+	Apis []tracer.APITraceOptions // API specific tracing options
+}
+
+func TraceConfiguration(ctx context.Context, device *path.Device) (*TraceConfig, error) {
+	mgr := GetManager(ctx)
+	tracer, ok := mgr.tracers[device.Id.ID()]
+	if !ok {
+		return nil, log.Errf(ctx, nil, "Could not find tracer for device %d", device.Id.ID())
+	}
+
+	opts := tracer.APITraceOptions(ctx)
+
+	config := &TraceConfig{
+		ServerLocalPath: tracer.IsServerLocal(),
+		CanSpecifyCwd: tracer.CanSpecifyCWD(),
+		CanUploadApplication: tracer.CanUploadApplication(),
+		HasCache: tracer.HasCache(),
+		CanSpecifyEnv: tracer.CanSpecifyEnv(),
+		Apis: opts,
+	}
+
+	return config, nil
+}

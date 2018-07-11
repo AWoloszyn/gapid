@@ -97,6 +97,7 @@ message Value {
     Threads threads = 18;
 
     device.Instance device = 20;
+    DeviceTraceConfiguration traceConfig = 21;
 
     api.Command command = 30;
     api.ResourceData resource_data = 31;
@@ -996,6 +997,6 @@ message DeviceTraceConfiguration {
 
 message DeviceAPITraceConfiguration {
   string api = 1; // What is the API this is for.
-  bool can_dsiable_pcs = 2; // Does this API support disabling pre-compiled shaders.
+  bool can_disable_pcs = 2; // Does this API support disabling pre-compiled shaders.
   bool supports_mid_execution_capture = 3; // Does this API support MEC.
 }

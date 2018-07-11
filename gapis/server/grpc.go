@@ -21,6 +21,7 @@ import (
 	"net"
 	"sync/atomic"
 	"time"
+	"os"
 
 	"github.com/google/gapid/core/app"
 	"github.com/google/gapid/core/app/auth"
@@ -397,11 +398,14 @@ func (s *grpcServer) Trace(conn service.Gapid_TraceServer) error {
 		for {
 			req, err := conn.Recv()
 			if err == io.EOF {
+				t.Dispose()
 				f(ctx)
 				return
 			}
 			if err != nil {
+				fmt.Fprintf(os.Stderr, "Hello World44")
 				ret_err = err
+				t.Dispose()
 				f(ctx)
 				return
 			}
