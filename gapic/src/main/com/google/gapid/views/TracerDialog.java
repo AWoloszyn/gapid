@@ -371,7 +371,7 @@ public class TracerDialog {
           e -> {
             if (device.getCombo().getSelectionIndex() >= 0) {
               DeviceCaptureInfo selectedDevice = devices.get(device.getCombo().getSelectionIndex());
-              DeviceTraceConfiguration config = selectedDevice.traceConfiguration;
+              DeviceTraceConfiguration config = selectedDevice.config;
 
               cwd.setEnabled(config.getCanSpecifyCwd());
               additionalEnvVars.setEnabled(config.getCanSpecifyEnv());

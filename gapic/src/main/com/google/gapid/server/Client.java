@@ -226,6 +226,19 @@ public class Client {
             in -> null));
   }
 
+  public ListenableFuture<Service.TraceTargetTreeNode> getTraceTargetTreeNode(
+      Path.Device device, String uri, float density) {
+    return call(() -> String.format(
+        "RPC->traceTargetTreeNode(%s, %s, %g)", shortDebugString(device), uri, density),
+        stack -> Futures.transformAsync(
+            client.getTraceTargetTreeNode(Service.TraceTargetTreeRequest.newBuilder()
+                .setDevice(device)
+                .setUri(uri)
+                .setDensity(density)
+                .build()),
+            in -> immediateFuture(throwIfError(in.getNode(), in.getError(), stack))));
+  }
+
   public ListenableFuture<Void> streamLog(Consumer<Log.Message> onLogMessage) {
     LOG.log(FINE, "RPC->getLogStream()");
     return client.streamLog(onLogMessage);

@@ -30,7 +30,6 @@ import com.google.gapid.rpc.SingleInFlight;
 import com.google.gapid.rpc.UiErrorCallback;
 import com.google.gapid.server.Client;
 import com.google.gapid.util.Events;
-import com.google.gapid.util.ExceptionHandler;
 import com.google.gapid.util.Loadable;
 import com.google.gapid.util.Paths;
 
@@ -49,14 +48,14 @@ public class Devices {
   private final Events.ListenerCollection<Listener> listeners = Events.listeners(Listener.class);
   private final SingleInFlight rpcController = new SingleInFlight();
   private final Shell shell;
-  protected final ExceptionHandler handler;
+  protected final Analytics analytics;
   private final Client client;
   private Path.Device replayDevice;
   private List<DeviceCaptureInfo> devices;
 
-  public Devices(Shell shell, ExceptionHandler handler, Client client, Capture capture) {
+  public Devices(Shell shell, Analytics analytics, Client client, Capture capture) {
     this.shell = shell;
-    this.handler = handler;
+    this.analytics = analytics;
     this.client = client;
 
     capture.addListener(new Capture.Listener() {
@@ -87,7 +86,7 @@ public class Devices {
           List<Path.Device> devs = result.get();
           return (devs == null || devs.isEmpty()) ? error(null) : success(devs.get(0));
         } catch (RpcException | ExecutionException e) {
-          handler.reportException(e);
+          analytics.reportException(e);
           throttleLogRpcError(LOG, "LoadData error", e);
           return error(null);
         }
@@ -125,7 +124,8 @@ public class Devices {
         ListenableFuture<Service.Value> dev = client.get(Paths.toAny(path));
         ListenableFuture<Service.Value> props = client.get(Paths.traceInfo(path));
         results.add(Futures.transform(Futures.allAsList(dev, props), l -> {
-          return new DeviceCaptureInfo(path, l.get(0).getDevice(), l.get(1).getTraceConfig());
+          return new DeviceCaptureInfo(path, l.get(0).getDevice(), l.get(1).getTraceConfig(),
+              new TraceTargets(shell, analytics, client, path));
         }));
       }
       return Futures.allAsList(results);
@@ -163,13 +163,13 @@ public class Devices {
   }
 
   public List<Device.Instance> getAllDevices() {
-    return (devices == null)? null: 
+    return (devices == null) ? null :
       devices.stream().map(info -> info.device).collect(toList());
   }
 
   public List<DeviceCaptureInfo> getCaptureDevices() {
-    return devices.stream().filter(info -> info.traceConfiguration.getApisList().size() > 0).
-              collect(toList());
+    return (devices == null) ? null :
+      devices.stream().filter(info -> !info.config.getApisList().isEmpty()).collect(toList());
   }
 
   public void addListener(Listener listener) {
@@ -198,17 +198,17 @@ public class Devices {
    *  are valid for that device.
    */
   public static class DeviceCaptureInfo {
-    public Path.Device     path;
-    public Device.Instance device;
-    public Service.DeviceTraceConfiguration traceConfiguration;
+    public final Path.Device path;
+    public final Device.Instance device;
+    public final Service.DeviceTraceConfiguration config;
+    public final TraceTargets targets;
 
-    DeviceCaptureInfo(
-      Path.Device path,
-      Device.Instance device,
-      Service.DeviceTraceConfiguration traceConfiguration) {
+    public DeviceCaptureInfo(Path.Device path, Device.Instance device,
+        Service.DeviceTraceConfiguration config, TraceTargets targets) {
       this.path = path;
       this.device = device;
-      this.traceConfiguration = traceConfiguration;
+      this.config = config;
+      this.targets = targets;
     }
   }
 }
