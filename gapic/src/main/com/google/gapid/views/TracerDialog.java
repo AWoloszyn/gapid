@@ -14,26 +14,19 @@
  * limitations under the License.
  */
 package com.google.gapid.views;
-import static java.util.logging.Level.SEVERE;
-import java.util.logging.Logger;
-
 
 import static com.google.gapid.widgets.Widgets.createBoldLabel;
 import static com.google.gapid.widgets.Widgets.createCheckbox;
 import static com.google.gapid.widgets.Widgets.createComposite;
 import static com.google.gapid.widgets.Widgets.createDropDownViewer;
 import static com.google.gapid.widgets.Widgets.createLabel;
-import static com.google.gapid.widgets.Widgets.createLink;
 import static com.google.gapid.widgets.Widgets.createSpinner;
-import static com.google.gapid.widgets.Widgets.createStandardTabFolder;
-import static com.google.gapid.widgets.Widgets.createStandardTabItem;
 import static com.google.gapid.widgets.Widgets.createTextarea;
 import static com.google.gapid.widgets.Widgets.createTextbox;
 import static com.google.gapid.widgets.Widgets.ifNotDisposed;
 import static com.google.gapid.widgets.Widgets.withIndents;
 import static com.google.gapid.widgets.Widgets.withLayoutData;
 import static com.google.gapid.widgets.Widgets.withMargin;
-import static com.google.gapid.widgets.Widgets.withSpans;
 
 import com.google.common.base.Throwables;
 import com.google.gapid.models.Analytics.View;
@@ -41,15 +34,16 @@ import com.google.gapid.models.Devices;
 import com.google.gapid.models.Devices.DeviceCaptureInfo;
 import com.google.gapid.models.Models;
 import com.google.gapid.models.Settings;
+import com.google.gapid.models.TraceTargets;
 import com.google.gapid.proto.device.Device;
 import com.google.gapid.proto.service.Service.ClientAction;
-import com.google.gapid.proto.service.Service.DeviceTraceConfiguration;
 import com.google.gapid.proto.service.Service.DeviceAPITraceConfiguration;
+import com.google.gapid.proto.service.Service.DeviceTraceConfiguration;
+import com.google.gapid.proto.service.Service.TraceTargetTreeNode;
 import com.google.gapid.server.Client;
 import com.google.gapid.server.Tracer;
 import com.google.gapid.server.Tracer.TraceRequest;
 import com.google.gapid.util.Messages;
-import com.google.gapid.util.OS;
 import com.google.gapid.util.Scheduler;
 import com.google.gapid.widgets.ActionTextbox;
 import com.google.gapid.widgets.DialogBase;
@@ -74,7 +68,6 @@ import org.eclipse.swt.widgets.DirectoryDialog;
 import org.eclipse.swt.widgets.Event;
 import org.eclipse.swt.widgets.FileDialog;
 import org.eclipse.swt.widgets.Label;
-import org.eclipse.swt.widgets.Link;
 import org.eclipse.swt.widgets.Listener;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.swt.widgets.Spinner;
@@ -89,6 +82,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.logging.Logger;
+
 /**
  * Dialogs used for capturing a trace.
  */
@@ -251,7 +246,7 @@ public class TracerDialog {
       private List<DeviceCaptureInfo> devices;
       private Label pcsWarning;
 
-      private Text        uri;
+      private ActionTextbox uri;
       private ComboViewer api;
       private Text        additionalArgs;
       private Text        cwd;
@@ -261,13 +256,13 @@ public class TracerDialog {
       private Button      withoutBuffering;
       private Button      clearCache;
       private Button      disablePcs;
-      
+
       protected final FileTextbox.Directory directory;
       protected final Text file;
-      
+
       protected boolean userHasChangedOutputFile = false;
 
-      public SharedTraceInput(Composite parent, Models models, Widgets widgets, 
+      public SharedTraceInput(Composite parent, Models models, Widgets widgets,
           Runnable refreshDevices) {
         super(parent, SWT.NONE);
         this.refreshDevices = refreshDevices;
@@ -292,8 +287,25 @@ public class TracerDialog {
         deviceComposite.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, false));
 
         createLabel(this, "URI:");
-        uri = withLayoutData(
-            createTextbox(this, ""), new GridData(SWT.FILL, SWT.FILL, true, false));
+        uri = withLayoutData(new ActionTextbox(this, "") {
+          @Override
+          protected String createAndShowDialog(String current) {
+            if (device.getCombo().getSelectionIndex() >= 0) {
+              DeviceCaptureInfo selectedDevice = devices.get(device.getCombo().getSelectionIndex());
+              TraceTargetPickerDialog dialog = new TraceTargetPickerDialog(
+                  getShell(), models, selectedDevice.targets, widgets);
+              if (dialog.open() == Window.OK) {
+                TraceTargets.Node node = dialog.getSelected();
+                if (node == null) {
+                  return null;
+                }
+                TraceTargetTreeNode data = node.getData();
+                return (data == null) ? null : data.getTraceUri();
+              }
+            }
+            return null;
+          }
+        }, new GridData(SWT.FILL, SWT.FILL, true, false));
 
         createLabel(this, "API:");
         api = createApiDropDown(this);
@@ -302,17 +314,17 @@ public class TracerDialog {
         createLabel(this, "Additional Arguments:");
         additionalArgs = withLayoutData(
           createTextbox(this, ""), new GridData(SWT.FILL, SWT.FILL, true, false));
-          
+
         createLabel(this, "Working Directory:");
         cwd = withLayoutData(
           createTextbox(this, ""), new GridData(SWT.FILL, SWT.FILL, true, false));
         cwd.setEnabled(false);
-          
+
         createLabel(this, "Additional Environment Variables:");
         additionalEnvVars = withLayoutData(
           createTextbox(this, ""), new GridData(SWT.FILL, SWT.FILL, true, false));
         additionalEnvVars.setEnabled(false);
-        
+
         createLabel(this, "Stop After:");
         Composite frameCountComposite =
             createComposite(this, withMargin(new GridLayout(2, false), 0, 0));
@@ -331,7 +343,7 @@ public class TracerDialog {
         withoutBuffering = withLayoutData(
             createCheckbox(this, "Disable Buffering", models.settings.traceWithoutBuffering),
             new GridData(SWT.FILL, SWT.FILL, true, false));
-  
+
         createLabel(this, "");
         clearCache = withLayoutData(
             createCheckbox(this, "Clear package cache", models.settings.traceClearCache),
@@ -388,7 +400,7 @@ public class TracerDialog {
         api.getCombo().addListener(SWT.Selection,
           e -> {
             if (api.getCombo().getSelectionIndex() >= 0) {
-              DeviceAPITraceConfiguration selectedAPI = 
+              DeviceAPITraceConfiguration selectedAPI =
                 (DeviceAPITraceConfiguration)(((StructuredSelection)api.getSelection()).getFirstElement());
               if (selectedAPI.getCanDisablePcs()) {
                 disablePcs.setEnabled(true);
@@ -520,7 +532,7 @@ public class TracerDialog {
           frameCount.getSelection(), !fromBeginning.getSelection(),
           withoutBuffering.getSelection());
       }
-      
+
       protected String getSelectedApi() {
         return ((DeviceAPITraceConfiguration)api.getStructuredSelection().getFirstElement()).getApi();
       }
