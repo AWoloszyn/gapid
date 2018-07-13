@@ -124,8 +124,7 @@ public class TracerDialog {
     if (loadDevicesAndShowDialog(input, models) == Window.OK) {
       TraceProgressDialog progress = new TraceProgressDialog(shell, input.getValue(), widgets.theme);
       AtomicBoolean failed = new AtomicBoolean(false);
-      Tracer.Trace trace = Tracer.trace(client,
-          shell.getDisplay(), models.settings, input.getValue(), new Tracer.Listener() {
+      Tracer.Trace trace = Tracer.trace(client, shell, input.getValue(), new Tracer.Listener() {
         @Override
         public void onProgress(String message) {
           progress.append(message);
@@ -138,9 +137,9 @@ public class TracerDialog {
           failed.set(true);
         }
       });
-      progress.setOnStart(trace::start);
+      progress.setTrace(trace);
       progress.open();
-      trace.stop();
+
       if (!failed.get()) {
         models.capture.loadCapture(input.getValue().output);
       }
@@ -552,18 +551,20 @@ public class TracerDialog {
    * Dialog that shows trace progress to the user and allows the user to stop the capture.
    */
   private static class TraceProgressDialog extends DialogBase {
+    private static final int STATUS_INTERVAL_MS = 1000;
+
     private final StringBuilder log = new StringBuilder();
     private final Tracer.TraceRequest request;
     private Text text;
-    private Runnable onStart;
+    private Tracer.Trace trace;
 
     public TraceProgressDialog(Shell shell, Tracer.TraceRequest request, Theme theme) {
       super(shell, theme);
       this.request = request;
     }
 
-    public void setOnStart(Runnable onStart) {
-      this.onStart = onStart;
+    public void setTrace(Tracer.Trace trace) {
+      this.trace = trace;
     }
 
     public void append(String line) {
@@ -594,6 +595,7 @@ public class TracerDialog {
       text.setEditable(false);
       text.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
 
+      Widgets.scheduleUntilDisposed(getShell(), STATUS_INTERVAL_MS, trace::getStatus);
       return area;
     }
 
@@ -604,11 +606,20 @@ public class TracerDialog {
 
     @Override
     protected void buttonPressed(int buttonId) {
-      if (IDialogConstants.OK_ID == buttonId && "Start".equals(getButton(buttonId).getText())) {
-        getButton(buttonId).setText("Stop");
-        onStart.run();
-      } else {
-        super.buttonPressed(buttonId);
+      if (IDialogConstants.OK_ID == buttonId) {
+        Button button = getButton(buttonId);
+        switch (button.getText()) {
+          case "Start":
+            button.setText("Stop");
+            trace.start();
+            break;
+          case "Stop":
+            button.setText("Done");
+            trace.stop();
+            break;
+          default:
+            super.buttonPressed(buttonId);
+        }
       }
     }
   }

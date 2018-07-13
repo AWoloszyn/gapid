@@ -16,20 +16,20 @@
 package com.google.gapid.server;
 
 import com.google.common.collect.Lists;
-import com.google.common.util.concurrent.FutureCallback;
-import com.google.common.util.concurrent.Futures;
-import com.google.gapid.models.Settings;
-import com.google.gapid.proto.device.Device;
-import com.google.gapid.proto.service.Service;
 import com.google.gapid.models.Devices.DeviceCaptureInfo;
+import com.google.gapid.proto.service.Service;
+import com.google.gapid.rpc.Rpc;
+import com.google.gapid.rpc.Rpc.Result;
+import com.google.gapid.rpc.RpcException;
+import com.google.gapid.rpc.UiCallback;
+import com.google.gapid.widgets.Widgets;
 
-import org.eclipse.swt.widgets.Display;
+import org.eclipse.swt.widgets.Shell;
 
 import java.io.File;
-import java.util.concurrent.CountDownLatch;
 import java.util.List;
-import java.util.Timer;
-import java.util.TimerTask;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
 
 /**
@@ -38,84 +38,75 @@ import java.util.logging.Logger;
 public class Tracer {
   private static final Logger LOG = Logger.getLogger(Tracer.class.getName());
 
-  public static Trace trace(
-      Client client,
-      Display display, Settings settings, TraceRequest request, Listener listener) {
-    
-    CountDownLatch signal = new CountDownLatch(1);
-
-    StreamSender<Service.TraceRequest> sender = client.streamTrace(
-      message -> {
-          if (message.getStatus().getStatus() == Service.TraceStatus.Done) {
-            signal.countDown();
-          }
-          display.asyncExec(() -> {
-            listener.onProgress(message.toString());
-          });
+  public static Trace trace(Client client, Shell shell, TraceRequest request, Listener listener) {
+    AtomicBoolean done = new AtomicBoolean();
+    GapidClient.StreamSender<Service.TraceRequest> sender = client.streamTrace(message -> {
+      Widgets.scheduleIfNotDisposed(shell, () -> listener.onProgress(message.toString()));
+      if (message.getStatus() == Service.TraceStatus.Done && done.compareAndSet(false, true)) {
+        return GapidClient.Result.DONE;
       }
-    );
+      return GapidClient.Result.CONTINUE;
+    });
 
-    Timer timer = new Timer();
-    
-
-    Futures.addCallback(sender.closed(), new FutureCallback<Void>() {
+    Rpc.listen(sender.getFuture(), new UiCallback<Void, Throwable>(shell, LOG) {
       @Override
-      public void onFailure(Throwable t) {
-        timer.cancel();
+      protected Throwable onRpcThread(Result<Void> result) {
+        done.set(true);
+        try {
+          result.get();
+          return null;
+        } catch (RpcException | ExecutionException e) {
+          return e;
+        }
+      }
+
+      @Override
+      protected void onUiThread(Throwable result) {
         // Give some time for all the output to pump through.
-        display.asyncExec(() -> display.timerExec(500, () -> listener.onFailure(t)));
-        signal.countDown();
-      }
-
-      @Override
-      public void onSuccess(Void v) {
-        timer.cancel();
-        signal.countDown();
-        // Ignore.
+        Widgets.scheduleIfNotDisposed(shell, 500, () -> {
+          if (result == null) {
+            listener.onFinished();
+          } else {
+            listener.onFailure(result);
+          }
+        });
       }
     });
 
-    sender.send(
-      Service.TraceRequest.newBuilder()
-        .setInitialize(
-          Service.TraceOptions.newBuilder()
+    sender.send(Service.TraceRequest.newBuilder()
+        .setInitialize(Service.TraceOptions.newBuilder()
             .setDevice(request.device.path)
             .setUri(request.uri)
             .setDeferStart(request.midExecution)
             .addApis(request.api)
-            .setServerLocalSavePath(request.output.getAbsolutePath())
-            .build()
-        ).build());
-
-    timer.scheduleAtFixedRate(new TimerTask() {
-      @Override 
-      public void run() {
-        sender.send(
-          Service.TraceRequest.newBuilder()
-          .setQueryEvent(Service.TraceEvent.Status)
-          .build());
-      }
-    }, 2000, 2000);
+            .setServerLocalSavePath(request.output.getAbsolutePath()))
+        .build());
 
     return new Trace() {
       @Override
-      public void start() {
-        sender.send(
-          Service.TraceRequest.newBuilder()
-          .setQueryEvent(Service.TraceEvent.Begin)
-          .build());
+      public boolean start() {
+        return sendEvent(Service.TraceEvent.Begin);
       }
 
       @Override
-      public void stop() {
-        sender.send(
-          Service.TraceRequest.newBuilder()
-          .setQueryEvent(Service.TraceEvent.Stop)
-          .build());
-        try {
-          signal.await();
-        } catch(InterruptedException ex) {}
-          sender.finish();
+      public boolean getStatus() {
+        return sendEvent(Service.TraceEvent.Status);
+      }
+
+      @Override
+      public boolean stop() {
+        return sendEvent(Service.TraceEvent.Stop);
+      }
+
+      private boolean sendEvent(Service.TraceEvent event) {
+        if (done.get()) {
+          return false;
+        }
+
+        sender.send(Service.TraceRequest.newBuilder()
+            .setQueryEvent(event)
+            .build());
+        return true;
       }
     };
   }
@@ -131,6 +122,11 @@ public class Tracer {
      * Event indicating that tracing has failed.
      */
     public default void onFailure(Throwable error) { /* empty */ }
+
+    /**
+     * Event indicating that tracing has completed successfully.
+     */
+    public default void onFinished() { /* empty */ }
   }
 
   /**
@@ -139,13 +135,21 @@ public class Tracer {
   public static interface Trace {
     /**
      * Requests the current trace to start capturing. Only valid for mid-execution traces.
+     * @returns whether the start request was sent.
      */
-    public void start();
+    public boolean start();
+
+    /**
+     * Queries for trace status. The status is communicated via {@link Listener#onProgress(String)}.
+     * @returns whether the status request was sent.
+     */
+    public boolean getStatus();
 
     /**
      * Requests the current trace to be stopped.
+     * @returns whether the stop request was sent.
      */
-    public void stop();
+    public boolean stop();
   }
 
   /**
@@ -160,11 +164,8 @@ public class Tracer {
     public final String uri;
     public final DeviceCaptureInfo device;
 
-    public TraceRequest(
-        DeviceCaptureInfo device,
-        String uri,
-        String api, 
-        File output, int frameCount, boolean midExecution, boolean disableBuffering) {
+    public TraceRequest(DeviceCaptureInfo device, String uri, String api, File output,
+        int frameCount, boolean midExecution, boolean disableBuffering) {
       this.device = device;
       this.uri = uri;
       this.api = api;

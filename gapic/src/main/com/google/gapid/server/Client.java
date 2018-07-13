@@ -16,6 +16,7 @@
 package com.google.gapid.server;
 
 import static com.google.common.util.concurrent.Futures.immediateFuture;
+import static com.google.gapid.server.GapidClient.Result.error;
 import static com.google.gapid.util.ProtoDebugTextFormat.shortDebugString;
 import static java.util.logging.Level.FINE;
 
@@ -250,10 +251,17 @@ public class Client {
     return client.streamSearch(request, onResult);
   }
 
-   public StreamSender<Service.TraceRequest> streamTrace(
-      Consumer<Service.TraceResponse> onTraceResponse) {
+   public GapidClient.StreamSender<Service.TraceRequest> streamTrace(
+       GapidClient.StreamConsumer<Service.StatusResponse> onTraceResponse) {
     LOG.log(FINE, "RPC->streamTrace()");
-    return client.streamTrace(onTraceResponse);
+    Stack stack = new Stack(() -> "RPC->streamTrace()");
+    return client.streamTrace(r -> {
+      try {
+        return onTraceResponse.consume(throwIfError(r.getStatus(), r.getError(), stack));
+      } catch (RpcException e) {
+        return error(e);
+      }
+    });
   }
 
   private static <V> ListenableFuture<V> call(
