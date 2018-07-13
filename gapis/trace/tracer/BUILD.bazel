@@ -18,11 +18,12 @@ go_library(
     name = "go_default_library",
     srcs = [
         "default_api_trace_options.go",
-        "tracer.go"
+        "tracer.go",
     ],
     importpath = "github.com/google/gapid/gapis/trace/tracer",
     visibility = ["//visibility:public"],
     deps = [
         "//gapii/client:go_default_library",
+        "//gapis/service:go_default_library",
     ],
 )

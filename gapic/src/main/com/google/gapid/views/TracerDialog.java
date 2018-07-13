@@ -36,6 +36,7 @@ import com.google.gapid.models.Models;
 import com.google.gapid.models.Settings;
 import com.google.gapid.models.TraceTargets;
 import com.google.gapid.proto.device.Device;
+import com.google.gapid.proto.service.Service;
 import com.google.gapid.proto.service.Service.ClientAction;
 import com.google.gapid.proto.service.Service.DeviceAPITraceConfiguration;
 import com.google.gapid.proto.service.Service.DeviceTraceConfiguration;
@@ -409,7 +410,7 @@ public class TracerDialog {
                 disablePcs.setSelection(false);
               }
 
-              if (selectedAPI.getSupportsMidExecutionCapture()) {
+              if (selectedAPI.getMidExecutionCaptureSupport() != Service.FeatureStatus.NotSupported) {
                 fromBeginning.setEnabled(true);
                 fromBeginning.setSelection(!models.settings.traceMidExecution);
               } else {

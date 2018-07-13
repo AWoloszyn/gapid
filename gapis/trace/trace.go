@@ -28,7 +28,7 @@ import (
 
 func Trace(ctx context.Context, device *path.Device, start task.Signal, options *tracer.TraceOptions, written *int64) error {
 	mgr := GetManager(ctx)
-	if device  == nil {
+	if device == nil {
 		return log.Errf(ctx, nil, "Invalid device path")
 	}
 	tracer, ok := mgr.tracers[device.ID.ID()]
@@ -59,12 +59,12 @@ func Trace(ctx context.Context, device *path.Device, start task.Signal, options 
 }
 
 type TraceConfig struct {
-	ServerLocalPath bool // Are the paths server-local for this tracer
-	CanSpecifyCwd bool // Does it make sense to specify a CWD for this device
-	CanUploadApplication bool // Does this device support app upload
-	CanSpecifyEnv bool // Does this device support environment variables
-	HasCache bool // Does this device have a clearable cache
-	Apis []tracer.APITraceOptions // API specific tracing options
+	ServerLocalPath      bool                     // Are the paths server-local for this tracer
+	CanSpecifyCwd        bool                     // Does it make sense to specify a CWD for this device
+	CanUploadApplication bool                     // Does this device support app upload
+	CanSpecifyEnv        bool                     // Does this device support environment variables
+	HasCache             bool                     // Does this device have a clearable cache
+	Apis                 []tracer.APITraceOptions // API specific tracing options
 }
 
 func TraceConfiguration(ctx context.Context, device *path.Device) (*TraceConfig, error) {
@@ -77,12 +77,12 @@ func TraceConfiguration(ctx context.Context, device *path.Device) (*TraceConfig,
 	opts := tracer.APITraceOptions(ctx)
 
 	config := &TraceConfig{
-		ServerLocalPath: tracer.IsServerLocal(),
-		CanSpecifyCwd: tracer.CanSpecifyCWD(),
+		ServerLocalPath:      tracer.IsServerLocal(),
+		CanSpecifyCwd:        tracer.CanSpecifyCWD(),
 		CanUploadApplication: tracer.CanUploadApplication(),
-		HasCache: tracer.HasCache(),
-		CanSpecifyEnv: tracer.CanSpecifyEnv(),
-		Apis: opts,
+		HasCache:             tracer.HasCache(),
+		CanSpecifyEnv:        tracer.CanSpecifyEnv(),
+		Apis:                 opts,
 	}
 
 	return config, nil

@@ -16,18 +16,14 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
     name = "go_default_library",
-    srcs = [
-        "trace.go"
-    ],
+    srcs = ["trace.go"],
     importpath = "github.com/google/gapid/gapis/trace/desktop",
     visibility = ["//visibility:public"],
     deps = [
-        "//core/log:go_default_library",
         "//core/os/device/bind:go_default_library",
         "//core/os/process:go_default_library",
         "//core/vulkan/loader:go_default_library",
-        "//gapis/trace/tracer:go_default_library",
         "//gapii/client:go_default_library",
-        "@com_github_pkg_errors//:go_default_library",
+        "//gapis/trace/tracer:go_default_library",
     ],
 )

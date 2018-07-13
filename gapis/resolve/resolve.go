@@ -52,6 +52,7 @@ func Device(ctx context.Context, p *path.Device) (*device.Instance, error) {
 	return device.Instance(), nil
 }
 
+// DeviceTraceConfiguration resolves and returns the trace config for a device.
 func DeviceTraceConfiguration(ctx context.Context, p *path.DeviceTraceConfiguration) (*service.DeviceTraceConfiguration, error) {
 	c, err := trace.TraceConfiguration(ctx, p.Device)
 
@@ -60,19 +61,19 @@ func DeviceTraceConfiguration(ctx context.Context, p *path.DeviceTraceConfigurat
 	}
 
 	config := &service.DeviceTraceConfiguration{
-		ServerLocalPath: c.ServerLocalPath,
-		CanSpecifyCwd: c.CanSpecifyCwd,
+		ServerLocalPath:      c.ServerLocalPath,
+		CanSpecifyCwd:        c.CanSpecifyCwd,
 		CanUploadApplication: c.CanUploadApplication,
-		HasCache: c.HasCache,
-		CanSpecifyEnv: c.CanSpecifyEnv,
-		Apis: make([]*service.DeviceAPITraceConfiguration, len(c.Apis)),
+		HasCache:             c.HasCache,
+		CanSpecifyEnv:        c.CanSpecifyEnv,
+		Apis:                 make([]*service.DeviceAPITraceConfiguration, len(c.Apis)),
 	}
 
 	for i, opt := range c.Apis {
-		config.Apis[i] = &service.DeviceAPITraceConfiguration {
-			Api: opt.ApiName,
-			CanDisablePcs: opt.CanDisablePCS,
-			SupportsMidExecutionCapture: opt.SupportsMidExecutionCapture,
+		config.Apis[i] = &service.DeviceAPITraceConfiguration{
+			Api:                        opt.APIName,
+			CanDisablePcs:              opt.CanDisablePCS,
+			MidExecutionCaptureSupport: opt.MidExecutionCaptureSupport,
 		}
 	}
 	return config, nil

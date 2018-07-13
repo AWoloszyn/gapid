@@ -545,14 +545,19 @@ service Gapid {
 
   // FindTraceTarget returns a trace target node if there is a single
   // unique option.
-  rpc FindTraceTarget(FindTraceTargetRequest) returns (TraceTargetTreeResponse) {}
+  rpc FindTraceTarget(FindTraceTargetRequest)
+      returns (TraceTargetTreeResponse) {
+  }
 
   // TraceTargetTreeNode returns information about the trace target
-  rpc TraceTargetTreeNode(TraceTargetTreeRequest) returns (TraceTargetTreeResponse) {}
+  rpc TraceTargetTreeNode(TraceTargetTreeRequest)
+      returns (TraceTargetTreeResponse) {
+  }
 
   // Trace returns a steam that can be used to start and stop
   // a trace
-  rpc Trace(stream TraceRequest) returns (stream TraceResponse) {}
+  rpc Trace(stream TraceRequest) returns (stream TraceResponse) {
+  }
 
   ///////////////////////////////////////////////////////////////
   // Below are debugging APIs which may be removed in the future.
@@ -893,30 +898,30 @@ message StateTreeNode {
 }
 
 message TraceTargetTreeNode {
-    // The name of the node
-    string name = 1;
-    // The icon of this node.
-    bytes icon = 2;
-    // The uri of this node
-    string uri = 3;
-    // The parent of this node. It will point to
-    // this node if there is no parent
-    string parent_uri = 4;
-    // Child nodes from this tree node
-    repeated string children_uris = 5;
-    // The uri that should be passed to the TraceOptions to trace this target.
-    // If null, this node is not traceable.
-    string trace_uri = 6;
-    // The friendly application name, if it makes sense.
-    string friendly_application = 7;
-    // The friendly executable name, if it makes sense.
-    string friendly_executable = 8;
+  // The name of the node
+  string name = 1;
+  // The icon of this node.
+  bytes icon = 2;
+  // The uri of this node
+  string uri = 3;
+  // The parent of this node. It will point to
+  // this node if there is no parent
+  string parent_uri = 4;
+  // Child nodes from this tree node
+  repeated string children_uris = 5;
+  // The uri that should be passed to the TraceOptions to trace this target.
+  // If null, this node is not traceable.
+  string trace_uri = 6;
+  // The friendly application name, if it makes sense.
+  string friendly_application = 7;
+  // The friendly executable name, if it makes sense.
+  string friendly_executable = 8;
 }
 
 message TraceTargetTreeRequest {
   path.Device device = 1;
   string uri = 2;
-  float  density = 3;
+  float density = 3;
 }
 
 message FindTraceTargetRequest {
@@ -932,38 +937,56 @@ message TraceTargetTreeResponse {
 }
 
 message TraceOptions {
-  path.Device device = 1; // The device on which to trace
+  // The device on which to trace
+  path.Device device = 1;
   oneof app {
-    string uri = 2; // The device-specific uri to trace
-    bytes upload_application = 3; // The application to upload and trace
+    // The device-specific uri to trace
+    string uri = 2;
+    // The application to upload and trace
+    bytes upload_application = 3;
   }
-  repeated string apis = 4; // What APIs should we trace
-  string additional_command_line_args = 5; // Any additional command-line args to pass to the app
-  string cwd = 6; // What directory should be used for tracing
-  repeated string environment = 7; // Additional environment variables to add in the form 'X=Y'
-  float duration = 8; // How long should we trace for
-  uint32 observe_frame_frequency = 9; // What frames should we insert into the trace
-  uint32 observe_draw_frequency = 10; // What draw calls should we insert into the trace
-  uint32 start_frame = 11; // What frame should we start tracing.
-  uint32 frames_to_capture = 12; // How many frames should we capture
-  bool   disable_pcs = 13; // Disable disable pre-compiled shaders.
-  bool   record_error_state = 14; // Insert extra commands to record error state
-  bool   defer_start = 15; // Wait for an event to start tracing
-  bool   no_buffer = 16; // Disable buffering. (In case of a crash)
-  bool   clear_cache = 17; // Clear the application cache
-  string server_local_save_path = 18; // Where should we save the capture file.
+  // What APIs should we trace
+  repeated string apis = 4;
+  // Any additional command-line args to pass to the app
+  string additional_command_line_args = 5;
+  // What directory should be used for tracing
+  string cwd = 6;
+  // Additional environment variables to add in the form 'X=Y'
+  repeated string environment = 7;
+  // How long should we trace for
+  float duration = 8;
+  // What frames should we insert into the trace
+  uint32 observe_frame_frequency = 9;
+  // What draw calls should we insert into the trace
+  uint32 observe_draw_frequency = 10;
+  // What frame should we start tracing.
+  uint32 start_frame = 11;
+  // How many frames should we capture
+  uint32 frames_to_capture = 12;
+  // Disable disable pre-compiled shaders.
+  bool disable_pcs = 13;
+  // Insert extra commands to record error state
+  bool record_error_state = 14;
+  // Wait for an event to start tracing
+  bool defer_start = 15;
+  // Disable buffering. (In case of a crash)
+  bool no_buffer = 16;
+  // Clear the application cache
+  bool clear_cache = 17;
+  // Where should we save the capture file.
+  string server_local_save_path = 18;
 }
 
 enum TraceEvent {
-  Begin = 0; // Begin tracing (only valid if started with MidExecution)
-  Stop = 1; // Flush and stop the trace
-  Status = 2; // Get the status of the trace
+  Begin = 0;   // Begin tracing (only valid if started with MidExecution)
+  Stop = 1;    // Flush and stop the trace
+  Status = 2;  // Get the status of the trace
 }
 
 message TraceRequest {
   oneof action {
     TraceOptions initialize = 1;
-    TraceEvent   query_event = 2;
+    TraceEvent query_event = 2;
   }
 }
 
@@ -977,27 +1000,41 @@ enum TraceStatus {
 
 message StatusResponse {
   int64 bytes_captured = 1;  // How many bytes have been captured so far
-  TraceStatus status = 2; // What state the trace is in
+  TraceStatus status = 2;    // What state the trace is in
 }
 
 message TraceResponse {
- oneof res {
+  oneof res {
     StatusResponse status = 1;
     Error error = 2;
   }
 }
 
 message DeviceTraceConfiguration {
-  bool server_local_path = 1; // Is the path to the app on this device server-local.
-  bool can_specify_cwd = 2; // Does it make sense to specify a CWD for the application.
-  bool can_upload_application = 3; // Can we upload an application to trace
+  // Is the path to the app on this device server-local.
+  bool server_local_path = 1;
+  // Does it make sense to specify a CWD for the application.
+  bool can_specify_cwd = 2;
+  // Can we upload an application to trace.
+  bool can_upload_application = 3;
   bool can_specify_env = 4;
-  repeated DeviceAPITraceConfiguration apis = 5; // API-specific trace information
-  bool has_cache = 6; // Is there a cache that can be cleared.
+  // API-specific trace information
+  repeated DeviceAPITraceConfiguration apis = 5;
+  // Is there a cache that can be cleared.
+  bool has_cache = 6;
+}
+
+enum FeatureStatus {
+  NotSupported = 0;
+  Supported = 1;
+  Experimental = 2;
 }
 
 message DeviceAPITraceConfiguration {
-  string api = 1; // What is the API this is for.
-  bool can_disable_pcs = 2; // Does this API support disabling pre-compiled shaders.
-  bool supports_mid_execution_capture = 3; // Does this API support MEC.
+  // What is the API this is for.
+  string api = 1;
+  // Does this API support disabling pre-compiled shaders.
+  bool can_disable_pcs = 2;
+  // Does this API support MEC.
+  FeatureStatus mid_execution_capture_support = 3;
 }

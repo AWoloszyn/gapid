@@ -14,18 +14,24 @@
 
 package tracer
 
+import (
+	"github.com/google/gapid/gapis/service"
+)
+
+// VulkanTraceOptions returns the default trace options for Vulkan.
 func VulkanTraceOptions() APITraceOptions {
 	return APITraceOptions{
-		ApiName:                     "Vulkan",
-		CanDisablePCS:               false,
-		SupportsMidExecutionCapture: true,
+		APIName:                    "Vulkan",
+		CanDisablePCS:              false,
+		MidExecutionCaptureSupport: service.FeatureStatus_Supported,
 	}
 }
 
-func GlesTraceOptions() APITraceOptions {
+// GLESTraceOptions returns the default trace options for GLES.
+func GLESTraceOptions() APITraceOptions {
 	return APITraceOptions{
-		ApiName:                     "OpenGLES",
-		CanDisablePCS:               true,
-		SupportsMidExecutionCapture: false,
+		APIName:                    "OpenGLES",
+		CanDisablePCS:              true,
+		MidExecutionCaptureSupport: service.FeatureStatus_Experimental,
 	}
 }

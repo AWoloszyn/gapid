@@ -18,14 +18,15 @@ import (
 	"context"
 
 	gapii "github.com/google/gapid/gapii/client"
+	"github.com/google/gapid/gapis/service"
 )
 
 // APITraceOptions represents API-sepcific trace options for a given
 // device.
 type APITraceOptions struct {
-	ApiName                     string // ApiName is the name of the API in question
-	CanDisablePCS               bool   // Does it make sense for this API to disable PCS
-	SupportsMidExecutionCapture bool   // Does this API support MEC
+	APIName                    string                // APIName is the name of the API in question
+	CanDisablePCS              bool                  // Does it make sense for this API to disable PCS
+	MidExecutionCaptureSupport service.FeatureStatus // Does this API support MEC
 }
 
 // TraceTargetTreeNode represents a node in the traceable application
@@ -94,6 +95,7 @@ type Tracer interface {
 	SetupTrace(ctx context.Context, o *TraceOptions) (*gapii.Process, func(), error)
 }
 
+// GapiiOptions converts the given TraceOptions to gapii.Options.
 func (o TraceOptions) GapiiOptions() gapii.Options {
 	apis := uint32(0)
 	for _, api := range o.APIs {

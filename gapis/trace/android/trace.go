@@ -40,14 +40,14 @@ import (
 // Only update the package list every 30 seconds at most
 var packageUpdateTime = 30.0
 
-type AndroidTracer struct {
+type androidTracer struct {
 	b                    adb.Device
 	packages             *pkginfo.PackageList
 	lastIconDensityScale float32
 	lastPackageUpdate    time.Time
 }
 
-func (t *AndroidTracer) GetPackages(ctx context.Context, isRoot bool, iconDensityScale float32) (*pkginfo.PackageList, error) {
+func (t *androidTracer) GetPackages(ctx context.Context, isRoot bool, iconDensityScale float32) (*pkginfo.PackageList, error) {
 	refresh := time.Since(t.lastPackageUpdate).Seconds() > packageUpdateTime ||
 		t.lastIconDensityScale != iconDensityScale
 
@@ -60,8 +60,8 @@ func (t *AndroidTracer) GetPackages(ctx context.Context, isRoot bool, iconDensit
 			return nil, err
 		}
 		pkgList := &pkginfo.PackageList{
-			Packages: []*pkginfo.Package{},
-			Icons: packages.Icons,
+			Packages:       []*pkginfo.Package{},
+			Icons:          packages.Icons,
 			OnlyDebuggable: packages.OnlyDebuggable,
 		}
 
@@ -81,39 +81,40 @@ func (t *AndroidTracer) GetPackages(ctx context.Context, isRoot bool, iconDensit
 	return t.packages, nil
 }
 
-func NewTracer(dev bind.Device) *AndroidTracer {
-	return &AndroidTracer{dev.(adb.Device), nil, 1.0, time.Time{}}
+// NewTracer returns a new Tracer for Android.
+func NewTracer(dev bind.Device) tracer.Tracer {
+	return &androidTracer{dev.(adb.Device), nil, 1.0, time.Time{}}
 }
 
 // IsServerLocal returns true if all paths on this device can be server-local
-func (t *AndroidTracer) IsServerLocal() bool {
+func (t *androidTracer) IsServerLocal() bool {
 	return false
 }
 
-func (t *AndroidTracer) CanSpecifyCWD() bool {
+func (t *androidTracer) CanSpecifyCWD() bool {
 	return false
 }
 
-func (t *AndroidTracer) CanSpecifyEnv() bool {
+func (t *androidTracer) CanSpecifyEnv() bool {
 	return false
 }
 
-func (t *AndroidTracer) CanUploadApplication() bool {
+func (t *androidTracer) CanUploadApplication() bool {
 	return true
 }
 
-func (t *AndroidTracer) HasCache() bool {
+func (t *androidTracer) HasCache() bool {
 	return true
 }
 
-func (t *AndroidTracer) CanUsePortFile() bool {
+func (t *androidTracer) CanUsePortFile() bool {
 	return false
 }
 
-func (t *AndroidTracer) APITraceOptions(ctx context.Context) []tracer.APITraceOptions {
+func (t *androidTracer) APITraceOptions(ctx context.Context) []tracer.APITraceOptions {
 	options := make([]tracer.APITraceOptions, 0, 2)
 	if t.b.Instance().Configuration.Drivers.Opengl.Version != "" {
-		options = append(options, tracer.GlesTraceOptions())
+		options = append(options, tracer.GLESTraceOptions())
 	}
 	if len(t.b.Instance().Configuration.Drivers.Vulkan.PhysicalDevices) > 0 {
 		options = append(options, tracer.VulkanTraceOptions())
@@ -121,7 +122,7 @@ func (t *AndroidTracer) APITraceOptions(ctx context.Context) []tracer.APITraceOp
 	return options
 }
 
-func (t *AndroidTracer) GetTraceTargetNode(ctx context.Context, uri string, iconDensity float32) (*tracer.TraceTargetTreeNode, error) {
+func (t *androidTracer) GetTraceTargetNode(ctx context.Context, uri string, iconDensity float32) (*tracer.TraceTargetTreeNode, error) {
 	packages, err := t.GetPackages(ctx, uri == "", iconDensity)
 
 	if err != nil {
@@ -162,14 +163,14 @@ func (t *AndroidTracer) GetTraceTargetNode(ctx context.Context, uri string, icon
 		pkg = requestedPkg
 	}
 
-	inst_pkg := packages.FindByName(pkg)
-	if inst_pkg == nil {
+	instPkg := packages.FindByName(pkg)
+	if instPkg == nil {
 		return nil, log.Errf(ctx, nil, "Could not find package %s", pkg)
 	}
 
 	if activity != "" {
 		var act *pkginfo.Activity
-		for _, a := range inst_pkg.Activities {
+		for _, a := range instPkg.Activities {
 			if a.Name == activity {
 				act = a
 				break
@@ -184,7 +185,7 @@ func (t *AndroidTracer) GetTraceTargetNode(ctx context.Context, uri string, icon
 				if i.Name == intent {
 					return &tracer.TraceTargetTreeNode{
 						intent,
-						packages.GetIcon(inst_pkg),
+						packages.GetIcon(instPkg),
 						fmt.Sprintf("%s:%s/%s", intent, pkg, activity),
 						fmt.Sprintf("%s:%s/%s", intent, pkg, activity),
 						[]string{},
@@ -198,7 +199,7 @@ func (t *AndroidTracer) GetTraceTargetNode(ctx context.Context, uri string, icon
 		}
 		r := &tracer.TraceTargetTreeNode{
 			activity,
-			packages.GetIcon(inst_pkg),
+			packages.GetIcon(instPkg),
 			fmt.Sprintf("%s/%s", pkg, activity),
 			"",
 			[]string{},
@@ -222,10 +223,10 @@ func (t *AndroidTracer) GetTraceTargetNode(ctx context.Context, uri string, icon
 		return r, nil
 	}
 
-	default_action := ""
+	defaultAction := ""
 	r := &tracer.TraceTargetTreeNode{
 		pkg,
-		packages.GetIcon(inst_pkg),
+		packages.GetIcon(instPkg),
 		pkg,
 		"",
 		[]string{},
@@ -233,23 +234,23 @@ func (t *AndroidTracer) GetTraceTargetNode(ctx context.Context, uri string, icon
 		pkg,
 		"",
 	}
-	for _, a := range inst_pkg.Activities {
+	for _, a := range instPkg.Activities {
 		if len(a.Actions) > 0 {
 			r.Children = append(r.Children, fmt.Sprintf("%s/%s", pkg, a.Name))
 			for _, act := range a.Actions {
 				if act.IsLaunch {
-					default_action = fmt.Sprintf("%s:%s/%s", act.Name, pkg, a.Name)
+					defaultAction = fmt.Sprintf("%s:%s/%s", act.Name, pkg, a.Name)
 				}
 			}
 		}
 	}
 
-	if len(inst_pkg.Activities) == 1 {
-		if len(inst_pkg.Activities[0].Actions) == 1 {
-			default_action = fmt.Sprintf("%s:%s/%s", inst_pkg.Activities[0].Actions[0].Name, pkg, inst_pkg.Activities[0].Name)
+	if len(instPkg.Activities) == 1 {
+		if len(instPkg.Activities[0].Actions) == 1 {
+			defaultAction = fmt.Sprintf("%s:%s/%s", instPkg.Activities[0].Actions[0].Name, pkg, instPkg.Activities[0].Name)
 		}
 	}
-	r.TraceURI = default_action
+	r.TraceURI = defaultAction
 	return r, nil
 }
 
@@ -257,7 +258,7 @@ func (t *AndroidTracer) GetTraceTargetNode(ctx context.Context, uri string, icon
 // If it is a zip file that contains an apk and an obb file
 // then we install them seperately.
 // Returns a function used to clean up the package and obb
-func (t *AndroidTracer) InstallPackage(ctx context.Context, o *tracer.TraceOptions) (*android.InstalledPackage, func(), error) {
+func (t *androidTracer) InstallPackage(ctx context.Context, o *tracer.TraceOptions) (*android.InstalledPackage, func(), error) {
 	tempDir, err := ioutil.TempDir("", "")
 	if err != nil {
 		return nil, nil, err
@@ -359,7 +360,7 @@ func (t *AndroidTracer) InstallPackage(ctx context.Context, o *tracer.TraceOptio
 	return pkg, cleanup, nil
 }
 
-func (t *AndroidTracer) getAction(ctx context.Context, pattern string) (string, error) {
+func (t *androidTracer) getAction(ctx context.Context, pattern string) (string, error) {
 	re := regexp.MustCompile("(?i)" + pattern)
 	packages, err := t.GetPackages(ctx, pattern == "", t.lastIconDensityScale)
 	if err != nil {
@@ -392,7 +393,7 @@ func (t *AndroidTracer) getAction(ctx context.Context, pattern string) (string, 
 	return matchingActions[0], nil
 }
 
-func (t *AndroidTracer) FindTraceTarget(ctx context.Context, str string) (*tracer.TraceTargetTreeNode, error) {
+func (t *androidTracer) FindTraceTarget(ctx context.Context, str string) (*tracer.TraceTargetTreeNode, error) {
 	uri, err := t.getAction(ctx, str)
 	if err != nil {
 		return nil, err
@@ -401,7 +402,7 @@ func (t *AndroidTracer) FindTraceTarget(ctx context.Context, str string) (*trace
 	return t.GetTraceTargetNode(ctx, uri, t.lastIconDensityScale)
 }
 
-func (t *AndroidTracer) SetupTrace(ctx context.Context, o *tracer.TraceOptions) (*gapii.Process, func(), error) {
+func (t *androidTracer) SetupTrace(ctx context.Context, o *tracer.TraceOptions) (*gapii.Process, func(), error) {
 	var err error
 	cleanup := func() {}
 	var pkg *android.InstalledPackage

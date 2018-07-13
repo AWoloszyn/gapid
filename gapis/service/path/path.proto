@@ -202,7 +202,7 @@ message Device {
 
 // DeviceTraceConfiguration is a path to the tracing config for a device
 message DeviceTraceConfiguration {
-    Device device = 1;
+  Device device = 1;
 }
 
 // FramebufferObservation is a path to a framebuffer observation image at the
