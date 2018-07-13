@@ -60,9 +60,9 @@ func (t *AndroidTracer) GetPackages(ctx context.Context, isRoot bool, iconDensit
 			return nil, err
 		}
 		pkgList := &pkginfo.PackageList{
-			[]*pkginfo.Package{},
-			packages.Icons,
-			packages.OnlyDebuggable,
+			Packages: []*pkginfo.Package{},
+			Icons: packages.Icons,
+			OnlyDebuggable: packages.OnlyDebuggable,
 		}
 
 		for _, p := range packages.Packages {
@@ -112,7 +112,7 @@ func (t *AndroidTracer) CanUsePortFile() bool {
 
 func (t *AndroidTracer) APITraceOptions(ctx context.Context) []tracer.APITraceOptions {
 	options := make([]tracer.APITraceOptions, 0, 2)
-	if t.b.Instance().Configuration.Drivers.OpenGL.Version != "" {
+	if t.b.Instance().Configuration.Drivers.Opengl.Version != "" {
 		options = append(options, tracer.GlesTraceOptions())
 	}
 	if len(t.b.Instance().Configuration.Drivers.Vulkan.PhysicalDevices) > 0 {

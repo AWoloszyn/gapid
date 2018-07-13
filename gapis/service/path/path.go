@@ -71,7 +71,7 @@ func (n *CommandTreeNodeForCommand) Path() *Any { return &Any{Path: &Any_Command
 func (n *Context) Path() *Any                   { return &Any{Path: &Any_Context{n}} }
 func (n *Contexts) Path() *Any                  { return &Any{Path: &Any_Contexts{n}} }
 func (n *Device) Path() *Any                    { return &Any{Path: &Any_Device{n}} }
-func (n *DeviceTraceConfiguration) Path() *Any  { return &Any{&Any_TraceConfig{n}} }
+func (n *DeviceTraceConfiguration) Path() *Any  { return &Any{Path: &Any_TraceConfig{n}} }
 func (n *Events) Path() *Any                    { return &Any{Path: &Any_Events{n}} }
 func (n *FramebufferObservation) Path() *Any    { return &Any{Path: &Any_FBO{n}} }
 func (n *Field) Path() *Any                     { return &Any{Path: &Any_Field{n}} }

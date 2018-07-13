@@ -382,14 +382,14 @@ func (s *server) TraceTargetTreeNode(ctx context.Context, req *service.TraceTarg
 	}
 
 	return &service.TraceTargetTreeNode{
-		tttn.Name,
-		tttn.Icon,
-		tttn.URI,
-		tttn.Parent,
-		tttn.Children,
-		tttn.TraceURI,
-		tttn.ApplicationName,
-		tttn.ExecutableName,
+		Name: tttn.Name,
+		Icon: tttn.Icon,
+		Uri: tttn.URI,
+		ParentUri: tttn.Parent,
+		ChildrenUris: tttn.Children,
+		TraceUri: tttn.TraceURI,
+		FriendlyApplication: tttn.ApplicationName,
+		FriendlyExecutable: tttn.ExecutableName,
 	}, nil
 }
 
@@ -400,14 +400,14 @@ func (s *server) FindTraceTarget(ctx context.Context, req *service.FindTraceTarg
 	}
 
 	return &service.TraceTargetTreeNode{
-		tttn.Name,
-		tttn.Icon,
-		tttn.URI,
-		tttn.Parent,
-		tttn.Children,
-		tttn.TraceURI,
-		tttn.ApplicationName,
-		tttn.ExecutableName,
+		Name: tttn.Name,
+		Icon: tttn.Icon,
+		Uri: tttn.URI,
+		ParentUri: tttn.Parent,
+		ChildrenUris: tttn.Children,
+		TraceUri: tttn.TraceURI,
+		FriendlyApplication: tttn.ApplicationName,
+		FriendlyExecutable: tttn.ExecutableName,
 	}, nil
 }
 
@@ -468,8 +468,8 @@ func (r *Tracer) Initialize(opts *service.TraceOptions) (*service.StatusResponse
 	}
 
 	resp := &service.StatusResponse{
-		0,
-		stat,
+		BytesCaptured: 0,
+		Status: stat,
 	}
 
 	return resp, nil
@@ -522,8 +522,8 @@ func (r *Tracer) Event(req service.TraceEvent) (*service.StatusResponse, error) 
 		status = service.TraceStatus_Done
 	}
 	resp := &service.StatusResponse{
-		atomic.LoadInt64(&r.bytesWritten),
-		status,
+		BytesCaptured: atomic.LoadInt64(&r.bytesWritten),
+		Status: status,
 	}
 	return resp, nil
 }

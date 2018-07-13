@@ -21,7 +21,6 @@ import (
 	"net"
 	"sync/atomic"
 	"time"
-	"os"
 
 	"github.com/google/gapid/core/app"
 	"github.com/google/gapid/core/app/auth"
@@ -403,7 +402,6 @@ func (s *grpcServer) Trace(conn service.Gapid_TraceServer) error {
 				return
 			}
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Hello World44")
 				ret_err = err
 				t.Dispose()
 				f(ctx)
@@ -414,25 +412,25 @@ func (s *grpcServer) Trace(conn service.Gapid_TraceServer) error {
 			case *service.TraceRequest_Initialize:
 				resp, err := t.Initialize(r.Initialize)
 				if err := service.NewError(err); err != nil {
-					r := service.TraceResponse{&service.TraceResponse_Error{
-						err,
+					r := service.TraceResponse{Res: &service.TraceResponse_Error{
+						Error: err,
 					}}
 					conn.Send(&r)
 					f(ctx)
 					return
 				}
-				conn.Send(&service.TraceResponse{&service.TraceResponse_Status{resp}})
+				conn.Send(&service.TraceResponse{Res: &service.TraceResponse_Status{Status: resp}})
 			case *service.TraceRequest_QueryEvent:
 				resp, err := t.Event(r.QueryEvent)
 				if err := service.NewError(err); err != nil {
-					r := service.TraceResponse{&service.TraceResponse_Error{
-						err,
+					r := service.TraceResponse{Res: &service.TraceResponse_Error{
+						Error: err,
 					}}
 					conn.Send(&r)
 					f(ctx)
 					return
 				}
-				conn.Send(&service.TraceResponse{&service.TraceResponse_Status{resp}})
+				conn.Send(&service.TraceResponse{Res: &service.TraceResponse_Status{Status: resp}})
 			}
 		}
 	}()

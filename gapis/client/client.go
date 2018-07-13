@@ -371,8 +371,8 @@ func (c *client) Trace(ctx context.Context) (service.TraceHandler, error) {
 func (t *traceHandler) Initialize(opts *service.TraceOptions) (*service.StatusResponse, error) {
 	err := t.conn.Send(
 		&service.TraceRequest{
-			&service.TraceRequest_Initialize{
-				opts,
+			Action: &service.TraceRequest_Initialize{
+				Initialize: opts,
 			}},
 	)
 	if err != nil {
@@ -388,8 +388,8 @@ func (t *traceHandler) Initialize(opts *service.TraceOptions) (*service.StatusRe
 func (t *traceHandler) Event(evt service.TraceEvent) (*service.StatusResponse, error) {
 	err := t.conn.Send(
 		&service.TraceRequest{
-			&service.TraceRequest_QueryEvent{
-				evt,
+			Action: &service.TraceRequest_QueryEvent{
+				QueryEvent: evt,
 			}},
 	)
 	if err != nil {

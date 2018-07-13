@@ -88,9 +88,9 @@ func (verb *packagesVerb) traversePackageTree(
 	}
 
 	node, err := c.TraceTargetTreeNode(ctx, &service.TraceTargetTreeRequest{
-		d,
-		uri,
-		float32(verb.IconDensity),
+		Device: d,
+		Uri: uri,
+		Density: float32(verb.IconDensity),
 	})
 	if err != nil {
 		return log.Errf(ctx, err, "Failed to load the node at: %v", uri)

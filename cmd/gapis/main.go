@@ -108,7 +108,7 @@ func run(ctx context.Context) error {
 
 	if *addLocalDevice {
 		host := bind.Host(ctx)
-		hostDevice = path.NewDevice(host.Instance().Id.ID())
+		hostDevice = path.NewDevice(host.Instance().ID.ID())
 		r.AddDevice(ctx, host)
 		r.SetDeviceProperty(ctx, host, client.LaunchArgsKey, text.SplitArgs(*gapirArgStr))
 	}

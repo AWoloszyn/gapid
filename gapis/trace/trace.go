@@ -31,9 +31,9 @@ func Trace(ctx context.Context, device *path.Device, start task.Signal, options 
 	if device  == nil {
 		return log.Errf(ctx, nil, "Invalid device path")
 	}
-	tracer, ok := mgr.tracers[device.Id.ID()]
+	tracer, ok := mgr.tracers[device.ID.ID()]
 	if !ok {
-		return log.Errf(ctx, nil, "Could not find tracer for device %d", device.Id.ID())
+		return log.Errf(ctx, nil, "Could not find tracer for device %d", device.ID.ID())
 	}
 
 	process, cleanup, err := tracer.SetupTrace(ctx, options)
@@ -69,9 +69,9 @@ type TraceConfig struct {
 
 func TraceConfiguration(ctx context.Context, device *path.Device) (*TraceConfig, error) {
 	mgr := GetManager(ctx)
-	tracer, ok := mgr.tracers[device.Id.ID()]
+	tracer, ok := mgr.tracers[device.ID.ID()]
 	if !ok {
-		return nil, log.Errf(ctx, nil, "Could not find tracer for device %d", device.Id.ID())
+		return nil, log.Errf(ctx, nil, "Could not find tracer for device %d", device.ID.ID())
 	}
 
 	opts := tracer.APITraceOptions(ctx)

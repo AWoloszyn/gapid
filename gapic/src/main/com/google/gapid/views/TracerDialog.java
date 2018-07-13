@@ -238,7 +238,7 @@ public class TracerDialog {
     }
 
 
-    private abstract static class SharedTraceInput extends Composite {
+    private static class SharedTraceInput extends Composite {
       private static final String DEFAULT_TRACE_FILE = "trace";
       private static final String TRACE_EXTENSION = ".gfxtrace";
       private static final DateFormat TRACE_DATE_FORMAT = new SimpleDateFormat("_yyyyMMdd_HHmm");

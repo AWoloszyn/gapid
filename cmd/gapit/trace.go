@@ -78,7 +78,8 @@ func (verb *traceVerb) Run(ctx context.Context, flags flag.FlagSet) error {
 
 	for _, dev := range devices {
 		tttn, err := client.FindTraceTarget(ctx, &service.FindTraceTargetRequest{
-			dev, traceURI,
+			Device: dev,
+			Uri: traceURI,
 		})
 		if err != nil {
 			continue

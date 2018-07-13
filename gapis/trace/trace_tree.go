@@ -25,9 +25,9 @@ import (
 // TraceTargetTreeNode returns a trace target tree node for the given request
 func TraceTargetTreeNode(ctx context.Context, device path.Device, uri string, density float32) (*tracer.TraceTargetTreeNode, error) {
 	mgr := GetManager(ctx)
-	tracer, ok := mgr.tracers[device.Id.ID()]
+	tracer, ok := mgr.tracers[device.ID.ID()]
 	if !ok {
-		return nil, log.Errf(ctx, nil, "Could not find tracer for device %d", device.Id.ID())
+		return nil, log.Errf(ctx, nil, "Could not find tracer for device %d", device.ID.ID())
 	}
 	return tracer.GetTraceTargetNode(ctx, uri, density)
 }
@@ -35,9 +35,9 @@ func TraceTargetTreeNode(ctx context.Context, device path.Device, uri string, de
 // FindTraceTarget finds returns a unique trace target tree node if it exists
 func FindTraceTarget(ctx context.Context, device path.Device, uri string) (*tracer.TraceTargetTreeNode, error) {
 	mgr := GetManager(ctx)
-	tracer, ok := mgr.tracers[device.Id.ID()]
+	tracer, ok := mgr.tracers[device.ID.ID()]
 	if !ok {
-		return nil, log.Errf(ctx, nil, "Could not find tracer for device %d", device.Id.ID())
+		return nil, log.Errf(ctx, nil, "Could not find tracer for device %d", device.ID.ID())
 	}
 	return tracer.FindTraceTarget(ctx, uri)
 }
