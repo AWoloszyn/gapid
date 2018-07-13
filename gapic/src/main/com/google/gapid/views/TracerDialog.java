@@ -27,6 +27,7 @@ import static com.google.gapid.widgets.Widgets.withLayoutData;
 import static com.google.gapid.widgets.Widgets.withMargin;
 import static com.google.gapid.widgets.Widgets.withSpans;
 
+import com.google.common.collect.Lists;
 import com.google.gapid.models.Analytics;
 import com.google.gapid.models.Analytics.View;
 import com.google.gapid.models.Devices;
@@ -56,6 +57,7 @@ import com.google.gapid.widgets.Widgets;
 import org.eclipse.jface.dialogs.IDialogConstants;
 import org.eclipse.jface.viewers.ArrayContentProvider;
 import org.eclipse.jface.viewers.ComboViewer;
+import org.eclipse.jface.viewers.IStructuredSelection;
 import org.eclipse.jface.viewers.LabelProvider;
 import org.eclipse.jface.viewers.StructuredSelection;
 import org.eclipse.jface.window.Window;
@@ -73,24 +75,21 @@ import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.widgets.Listener;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.swt.widgets.Spinner;
-import org.eclipse.swt.widgets.TabFolder;
 import org.eclipse.swt.widgets.Text;
 
 import java.io.File;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
-import java.util.logging.Logger;
 
 /**
  * Dialogs used for capturing a trace.
  */
 public class TracerDialog {
-  private static final Logger LOG = Logger.getLogger(TracerDialog.class.getName());
-
   private TracerDialog() {
   }
 
@@ -159,8 +158,7 @@ public class TracerDialog {
     private final Widgets widgets;
     private final Runnable refreshDevices;
 
-    private TabFolder folder;
-    private SharedTraceInput traceInput;
+    private TraceInput traceInput;
     private List<DeviceCaptureInfo> devices;
 
     private Tracer.TraceRequest value;
@@ -170,6 +168,11 @@ public class TracerDialog {
       this.models = models;
       this.widgets = widgets;
       this.refreshDevices = refreshDevices;
+    }
+
+    public void setDevices(List<DeviceCaptureInfo> devices) {
+      this.devices = devices;
+      traceInput.setDevices(models.settings, devices);
     }
 
     public Tracer.TraceRequest getValue() {
@@ -184,7 +187,7 @@ public class TracerDialog {
     @Override
     protected Control createDialogArea(Composite parent) {
       Composite area = (Composite)super.createDialogArea(parent);
-      traceInput = new SharedTraceInput(area, models, widgets, refreshDevices);
+      traceInput = new TraceInput(area, models, widgets, refreshDevices);
       traceInput.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, false));
 
       if (devices != null) {
@@ -192,7 +195,6 @@ public class TracerDialog {
       }
       return area;
     }
-
 
     @Override
     protected void createButtonsForButtonBar(Composite parent) {
@@ -215,45 +217,39 @@ public class TracerDialog {
       super.buttonPressed(buttonId);
     }
 
-    public void setDevices(List<DeviceCaptureInfo> devices) {
-      this.devices = devices;
-      traceInput.setDevices(models.settings, devices);
-    }
-
-
-    private static class SharedTraceInput extends Composite {
+    private static class TraceInput extends Composite {
       private static final String DEFAULT_TRACE_FILE = "trace";
       private static final String TRACE_EXTENSION = ".gfxtrace";
       private static final DateFormat TRACE_DATE_FORMAT = new SimpleDateFormat("_yyyyMMdd_HHmm");
       protected static final String MEC_LABEL = "Trace From Beginning";
+      private static final String MEC_LABEL_WARNING =
+          "Trace From Beginning (mid-execution capture for %s is experimental)";
 
       private final String date = TRACE_DATE_FORMAT.format(new Date());
-      private final Runnable refreshDevices;
-      private LoadingIndicator.Widget deviceLoader;
-      private ComboViewer device;
+
       private List<DeviceCaptureInfo> devices;
-      private Label pcsWarning;
 
-      private ActionTextbox uri;
+      private ComboViewer device;
+      private LoadingIndicator.Widget deviceLoader;
       private ComboViewer api;
-      private Text        additionalArgs;
-      private Text        cwd;
-      private Text        additionalEnvVars;
-      private Spinner     frameCount;
-      private Button      fromBeginning;
-      private Button      withoutBuffering;
-      private Button      clearCache;
-      private Button      disablePcs;
-
-      protected final FileTextbox.Directory directory;
+      private ActionTextbox traceTarget;
+      private Text arguments;
+      private Text cwd;
+      private Text envVars;
+      private Spinner frameCount;
+      private Button fromBeginning;
+      private Button withoutBuffering;
+      private Button clearCache;
+      private Button disablePcs;
+      private final FileTextbox.Directory directory;
       protected final Text file;
 
+      private Label pcsWarning;
+      protected String friendlyName = "";
       protected boolean userHasChangedOutputFile = false;
 
-      public SharedTraceInput(Composite parent, Models models, Widgets widgets,
-          Runnable refreshDevices) {
+      public TraceInput(Composite parent, Models models, Widgets widgets, Runnable refreshDevices) {
         super(parent, SWT.NONE);
-        this.refreshDevices = refreshDevices;
         setLayout(new GridLayout(2, false));
 
         createLabel(this, "Device:");
@@ -274,20 +270,29 @@ public class TracerDialog {
 
         deviceComposite.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, false));
 
-        createLabel(this, "URI:");
-        uri = withLayoutData(new ActionTextbox(this, "") {
+        createLabel(this, "API:");
+        api = createApiDropDown(this);
+        api.getCombo().setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, false));
+
+        createLabel(this, "Application:");
+        traceTarget = withLayoutData(new ActionTextbox(this, models.settings.traceUri) {
           @Override
           protected String createAndShowDialog(String current) {
-            if (device.getCombo().getSelectionIndex() >= 0) {
-              DeviceCaptureInfo selectedDevice = devices.get(device.getCombo().getSelectionIndex());
-              TraceTargetPickerDialog dialog = new TraceTargetPickerDialog(
-                  getShell(), models, selectedDevice.targets, widgets);
+            DeviceCaptureInfo dev = getSelectedDevice();
+            if (dev != null) {
+              TraceTargetPickerDialog dialog =
+                  new TraceTargetPickerDialog(getShell(), models, dev.targets, widgets);
               if (dialog.open() == Window.OK) {
                 TraceTargets.Node node = dialog.getSelected();
                 if (node == null) {
                   return null;
                 }
                 TraceTargetTreeNode data = node.getData();
+                if (data != null && !userHasChangedOutputFile) {
+                  file.setText(formatTraceName(data.getFriendlyApplication()));
+                  friendlyName = data.getFriendlyApplication();
+                  userHasChangedOutputFile = false; // cancel the modify event from set call.
+                }
                 return (data == null) ? null : data.getTraceUri();
               }
             }
@@ -295,23 +300,19 @@ public class TracerDialog {
           }
         }, new GridData(SWT.FILL, SWT.FILL, true, false));
 
-        createLabel(this, "API:");
-        api = createApiDropDown(this);
-        api.getCombo().setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, false));
-
         createLabel(this, "Additional Arguments:");
-        additionalArgs = withLayoutData(
-          createTextbox(this, ""), new GridData(SWT.FILL, SWT.FILL, true, false));
+        arguments = withLayoutData(createTextbox(this, models.settings.traceArguments),
+            new GridData(SWT.FILL, SWT.FILL, true, false));
 
         createLabel(this, "Working Directory:");
-        cwd = withLayoutData(
-          createTextbox(this, ""), new GridData(SWT.FILL, SWT.FILL, true, false));
+        cwd = withLayoutData(createTextbox(this, models.settings.traceCwd),
+            new GridData(SWT.FILL, SWT.FILL, true, false));
         cwd.setEnabled(false);
 
-        createLabel(this, "Additional Environment Variables:");
-        additionalEnvVars = withLayoutData(
-          createTextbox(this, ""), new GridData(SWT.FILL, SWT.FILL, true, false));
-        additionalEnvVars.setEnabled(false);
+        createLabel(this, "Environment Variables:");
+        envVars = withLayoutData(createTextbox(this, models.settings.traceEnv),
+            new GridData(SWT.FILL, SWT.FILL, true, false));
+        envVars.setEnabled(false);
 
         createLabel(this, "Stop After:");
         Composite frameCountComposite =
@@ -356,10 +357,6 @@ public class TracerDialog {
         file = withLayoutData(
             createTextbox(this, ""), new GridData(SWT.FILL, SWT.FILL, true, false));
 
-        file.addListener(SWT.Modify, e -> {
-          userHasChangedOutputFile = true;
-        });
-
         createLabel(this, "");
         pcsWarning = withLayoutData(
             createLabel(this, "Warning: Pre-compiled shaders are not supported in the replay."),
@@ -367,51 +364,32 @@ public class TracerDialog {
         pcsWarning.setForeground(getDisplay().getSystemColor(SWT.COLOR_DARK_YELLOW));
         pcsWarning.setVisible(!models.settings.traceDisablePcs);
 
-        device.getCombo().addListener(SWT.Selection,
-          e -> {
-            if (device.getCombo().getSelectionIndex() >= 0) {
-              DeviceCaptureInfo selectedDevice = devices.get(device.getCombo().getSelectionIndex());
-              DeviceTraceConfiguration config = selectedDevice.config;
+        device.getCombo().addListener(
+            SWT.Selection, e -> update(models.settings, getSelectedDevice()));
+        api.getCombo().addListener(SWT.Selection, e -> update(models.settings, getSelectedApi()));
 
-              cwd.setEnabled(config.getCanSpecifyCwd());
-              additionalEnvVars.setEnabled(config.getCanSpecifyEnv());
-              clearCache.setEnabled(config.getHasCache());
-              updateAPIDropdown(config.getApisList(), models.settings);
-            } else {
-              cwd.setEnabled(false);
-              additionalEnvVars.setEnabled(false);
-              clearCache.setEnabled(false);
-              updateAPIDropdown(null, models.settings);
-            }
+        Listener mecListener = e -> {
+          DeviceAPITraceConfiguration config = getSelectedApi();
+          if (fromBeginning.getSelection() || config == null ||
+              config.getMidExecutionCaptureSupport() != Service.FeatureStatus.Experimental) {
+            fromBeginning.setText(MEC_LABEL);
+          } else {
+            fromBeginning.setText(String.format(MEC_LABEL_WARNING, config.getApi()));
+          }
+        };
+        api.getCombo().addListener(SWT.Selection, mecListener);
+        fromBeginning.addListener(SWT.Selection, mecListener);
+
+        disablePcs.addListener(
+            SWT.Selection, e -> pcsWarning.setVisible(!disablePcs.getSelection()));
+
+        file.addListener(SWT.Modify, e -> {
+          userHasChangedOutputFile = true;
+          friendlyName = "";
         });
-
-        api.getCombo().addListener(SWT.Selection,
-          e -> {
-            if (api.getCombo().getSelectionIndex() >= 0) {
-              DeviceAPITraceConfiguration selectedAPI =
-                (DeviceAPITraceConfiguration)(((StructuredSelection)api.getSelection()).getFirstElement());
-              if (selectedAPI.getCanDisablePcs()) {
-                disablePcs.setEnabled(true);
-                disablePcs.setSelection(models.settings.traceDisablePcs);
-              } else {
-                disablePcs.setEnabled(false);
-                disablePcs.setSelection(false);
-              }
-
-              if (selectedAPI.getMidExecutionCaptureSupport() != Service.FeatureStatus.NotSupported) {
-                fromBeginning.setEnabled(true);
-                fromBeginning.setSelection(!models.settings.traceMidExecution);
-              } else {
-                fromBeginning.setEnabled(false);
-                fromBeginning.setSelection(true);
-              }
-            } else {
-              fromBeginning.setEnabled(false);
-              fromBeginning.setSelection(true);
-              disablePcs.setEnabled(false);
-              disablePcs.setSelection(false);
-            }
-        });
+        if (!models.settings.traceFriendlyName.isEmpty()) {
+          file.setText(formatTraceName(models.settings.traceFriendlyName));
+        }
 
         updateDevicesDropDown(models.settings);
       }
@@ -436,15 +414,6 @@ public class TracerDialog {
         return combo;
       }
 
-      protected String formatTraceName(String name) {
-        return (name.isEmpty() ? DEFAULT_TRACE_FILE : name) + date + TRACE_EXTENSION;
-      }
-
-      protected String getDefaultApi(Settings settings) {
-        return settings.traceApi;
-      }
-
-
       private static ComboViewer createApiDropDown(Composite parent) {
         ComboViewer combo = createDropDownViewer(parent);
         combo.setContentProvider(ArrayContentProvider.getInstance());
@@ -457,22 +426,24 @@ public class TracerDialog {
         return combo;
       }
 
-      public boolean isReady() {
-        return api.getCombo().getSelectionIndex() >= 0 &&
-            !file.getText().isEmpty() && !directory.getText().isEmpty();
+      private void update(Settings settings, DeviceCaptureInfo dev) {
+        DeviceTraceConfiguration config = (dev == null) ? null : dev.config;
+        traceTarget.setActionEnabled(dev != null);
+        cwd.setEnabled(config != null && config.getCanSpecifyCwd());
+        envVars.setEnabled(config != null && config.getCanSpecifyEnv());
+        clearCache.setEnabled(config != null && config.getHasCache());
+        updateApiDropdown(config, settings);
       }
 
-      public void addModifyListener(Listener listener) {
-        api.getCombo().addListener(SWT.Selection, listener);
-        file.addListener(SWT.Modify, listener);
-        directory.addBoxListener(SWT.Modify, listener);
-        device.getCombo().addListener(SWT.Selection, listener);
-      }
+      private void update(Settings settings, DeviceAPITraceConfiguration config) {
+        boolean pcs = config != null && config.getCanDisablePcs();
+        disablePcs.setEnabled(pcs);
+        disablePcs.setSelection(pcs && settings.traceDisablePcs);
 
-
-      public void setDevices(Settings settings, List<DeviceCaptureInfo> devices) {
-        this.devices = devices;
-        updateDevicesDropDown(settings);
+        boolean mec = config != null &&
+            config.getMidExecutionCaptureSupport() != Service.FeatureStatus.NotSupported;
+        fromBeginning.setEnabled(mec);
+        fromBeginning.setSelection(!mec || !settings.traceMidExecution);
       }
 
       private void updateDevicesDropDown(Settings settings) {
@@ -493,36 +464,128 @@ public class TracerDialog {
         }
       }
 
-      private void updateAPIDropdown(List<DeviceAPITraceConfiguration> configs, Settings settings) {
-        api.setInput(configs);
-        if (configs != null) {
-          for (DeviceAPITraceConfiguration c : configs) {
+      private void updateApiDropdown(DeviceTraceConfiguration config, Settings settings) {
+        if (api != null && config != null) {
+          api.setInput(config.getApisList());
+          DeviceAPITraceConfiguration deflt = config.getApis(0);
+          for (DeviceAPITraceConfiguration c : config.getApisList()) {
             if (c.getApi().equals(settings.traceApi)) {
-              api.setSelection(new StructuredSelection(c));
-              api.getCombo().notifyListeners(SWT.Selection, new Event());
-              return;
+              deflt = c;
+              break;
             }
           }
-          api.setSelection(new StructuredSelection(configs.get(0)));
+          api.setSelection(new StructuredSelection(deflt));
+          api.getCombo().notifyListeners(SWT.Selection, new Event());
         }
-        api.getCombo().notifyListeners(SWT.Selection, new Event());
+      }
+
+      protected String formatTraceName(String name) {
+        return (name.isEmpty() ? DEFAULT_TRACE_FILE : name) + date + TRACE_EXTENSION;
+      }
+
+      public boolean isReady() {
+        return getSelectedDevice() != null && getSelectedApi() != null &&
+            !traceTarget.getText().isEmpty() && !directory.getText().isEmpty() &&
+            !file.getText().isEmpty();
+      }
+
+      public void addModifyListener(Listener listener) {
+        device.getCombo().addListener(SWT.Selection, listener);
+        api.getCombo().addListener(SWT.Selection, listener);
+        traceTarget.addBoxListener(SWT.Modify, listener);
+        directory.addBoxListener(SWT.Modify, listener);
+        file.addListener(SWT.Modify, listener);
+      }
+
+      public void setDevices(Settings settings, List<DeviceCaptureInfo> devices) {
+        this.devices = devices;
+        updateDevicesDropDown(settings);
       }
 
       public TraceRequest getTraceRequest(Settings settings) {
-        settings.traceApi = getSelectedApi();
-        settings.traceOutDir = directory.getText();
+        DeviceCaptureInfo dev = devices.get(device.getCombo().getSelectionIndex());
+        DeviceAPITraceConfiguration config = getSelectedApi();
+        File output = getOutputFile();
+
+        settings.traceDevice = dev.device.getSerial();
+        settings.traceApi = config.getApi();
+        settings.traceUri = traceTarget.getText();
+        settings.traceArguments = arguments.getText();
         settings.traceFrameCount = frameCount.getSelection();
-        settings.traceMidExecution = !fromBeginning.getSelection();
         settings.traceWithoutBuffering = withoutBuffering.getSelection();
-        DeviceCaptureInfo selectedDevice = devices.get(device.getCombo().getSelectionIndex());
-        return new TraceRequest(selectedDevice, uri.getText(),
-          getSelectedApi(), getOutputFile(),
-          frameCount.getSelection(), !fromBeginning.getSelection(),
-          withoutBuffering.getSelection());
+        settings.traceOutDir = directory.getText();
+        settings.traceFriendlyName = friendlyName;
+
+        Service.TraceOptions.Builder options = Service.TraceOptions.newBuilder()
+            .setDevice(dev.path)
+            .addApis(config.getApi())
+            .setUri(traceTarget.getText())
+            .setAdditionalCommandLineArgs(arguments.getText())
+            .setFramesToCapture(frameCount.getSelection())
+            .setNoBuffer(withoutBuffering.getSelection())
+            .setServerLocalSavePath(output.getAbsolutePath());
+
+        if (dev.config.getCanSpecifyCwd()) {
+          settings.traceCwd = cwd.getText();
+          options.setCwd(cwd.getText());
+        }
+        if (dev.config.getCanSpecifyEnv()) {
+          settings.traceEnv = envVars.getText();
+          options.addAllEnvironment(splitEnv(envVars.getText()));
+        }
+        if (config.getMidExecutionCaptureSupport() != Service.FeatureStatus.NotSupported) {
+          settings.traceMidExecution = !fromBeginning.getSelection();
+          options.setDeferStart(!fromBeginning.getSelection());
+        }
+        if (dev.config.getHasCache()) {
+          settings.traceClearCache = clearCache.getSelection();
+          options.setClearCache(clearCache.getSelection());
+        }
+        if (config.getCanDisablePcs()) {
+          settings.traceDisablePcs = disablePcs.getSelection();
+          options.setDisablePcs(disablePcs.getSelection());
+        }
+
+        return new TraceRequest(output, options.build());
       }
 
-      protected String getSelectedApi() {
-        return ((DeviceAPITraceConfiguration)api.getStructuredSelection().getFirstElement()).getApi();
+      private static List<String> splitEnv(String env) {
+        if ((env = env.trim()).isEmpty()) {
+          return Collections.emptyList();
+        }
+
+        List<String> result = Lists.newArrayList();
+        boolean inQuote = false, foundEq = false;
+        int start = 0;
+        for (int i = 0; i < env.length(); i++) {
+          switch (env.charAt(i)) {
+            case ' ':
+              if (!inQuote && foundEq) {
+                result.add(env.substring(start, i));
+                start = i;
+                foundEq = false;
+              }
+              break;
+            case '"':
+              inQuote = !inQuote;
+              break;
+            case '=':
+              foundEq = true;
+              break;
+          }
+        }
+        result.add(env.substring(start));
+        return result;
+      }
+
+      protected DeviceCaptureInfo getSelectedDevice() {
+        IStructuredSelection sel = device.getStructuredSelection();
+        return sel.isEmpty() ? null : (DeviceCaptureInfo)sel.getFirstElement();
+      }
+
+      protected DeviceAPITraceConfiguration getSelectedApi() {
+        IStructuredSelection sel = api.getStructuredSelection();
+        return sel.isEmpty() ? null : ((DeviceAPITraceConfiguration)sel.getFirstElement());
       }
 
       private File getOutputFile() {
@@ -667,7 +730,7 @@ public class TracerDialog {
 
     @Override
     protected void createButtonsForButtonBar(Composite parent) {
-      createButton(parent, IDialogConstants.OK_ID, request.midExecution ? "Start" : "Stop", true);
+      createButton(parent, IDialogConstants.OK_ID, request.isMec() ? "Start" : "Stop", true);
     }
 
     @Override

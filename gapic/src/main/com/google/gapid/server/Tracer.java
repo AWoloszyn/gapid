@@ -15,8 +15,8 @@
  */
 package com.google.gapid.server;
 
-import com.google.gapid.models.Devices.DeviceCaptureInfo;
 import com.google.gapid.proto.service.Service;
+import com.google.gapid.proto.service.Service.TraceOptions;
 import com.google.gapid.rpc.Rpc;
 import com.google.gapid.rpc.Rpc.Result;
 import com.google.gapid.rpc.RpcException;
@@ -72,12 +72,7 @@ public class Tracer {
     });
 
     sender.send(Service.TraceRequest.newBuilder()
-        .setInitialize(Service.TraceOptions.newBuilder()
-            .setDevice(request.device.path)
-            .setUri(request.uri)
-            .setDeferStart(request.midExecution)
-            .addApis(request.api)
-            .setServerLocalSavePath(request.output.getAbsolutePath()))
+        .setInitialize(request.options)
         .build());
 
     return new Trace() {
@@ -155,28 +150,20 @@ public class Tracer {
    * Contains information about how and what application to trace.
    */
   public static class TraceRequest {
-    public final String api;
     public final File output;
-    public final int frameCount;
-    public final boolean midExecution;
-    public final boolean disableBuffering;
-    public final String uri;
-    public final DeviceCaptureInfo device;
+    public final Service.TraceOptions options;
 
-    public TraceRequest(DeviceCaptureInfo device, String uri, String api, File output,
-        int frameCount, boolean midExecution, boolean disableBuffering) {
-      this.device = device;
-      this.uri = uri;
-      this.api = api;
+    public TraceRequest(File output, TraceOptions options) {
       this.output = output;
-      this.frameCount = frameCount;
-      this.midExecution = midExecution;
-      this.disableBuffering = disableBuffering;
+      this.options = options;
+    }
+
+    public boolean isMec() {
+      return options.getDeferStart();
     }
 
     public String getProgressDialogTitle() {
-      // TODO: don't use uri.
-      return "Capturing " + uri + " to " + output.getName();
+      return "Capturing " + output.getName();
     }
   }
 }
