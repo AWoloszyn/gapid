@@ -21,14 +21,13 @@ import static com.google.gapid.widgets.Widgets.createComposite;
 import static com.google.gapid.widgets.Widgets.createDropDownViewer;
 import static com.google.gapid.widgets.Widgets.createLabel;
 import static com.google.gapid.widgets.Widgets.createSpinner;
-import static com.google.gapid.widgets.Widgets.createTextarea;
 import static com.google.gapid.widgets.Widgets.createTextbox;
-import static com.google.gapid.widgets.Widgets.ifNotDisposed;
 import static com.google.gapid.widgets.Widgets.withIndents;
 import static com.google.gapid.widgets.Widgets.withLayoutData;
 import static com.google.gapid.widgets.Widgets.withMargin;
+import static com.google.gapid.widgets.Widgets.withSpans;
 
-import com.google.common.base.Throwables;
+import com.google.gapid.models.Analytics;
 import com.google.gapid.models.Analytics.View;
 import com.google.gapid.models.Devices;
 import com.google.gapid.models.Devices.DeviceCaptureInfo;
@@ -40,6 +39,7 @@ import com.google.gapid.proto.service.Service;
 import com.google.gapid.proto.service.Service.ClientAction;
 import com.google.gapid.proto.service.Service.DeviceAPITraceConfiguration;
 import com.google.gapid.proto.service.Service.DeviceTraceConfiguration;
+import com.google.gapid.proto.service.Service.StatusResponse;
 import com.google.gapid.proto.service.Service.TraceTargetTreeNode;
 import com.google.gapid.server.Client;
 import com.google.gapid.server.Tracer;
@@ -60,6 +60,7 @@ import org.eclipse.jface.viewers.LabelProvider;
 import org.eclipse.jface.viewers.StructuredSelection;
 import org.eclipse.jface.window.Window;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.Button;
@@ -82,7 +83,6 @@ import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
 
 /**
@@ -123,25 +123,13 @@ public class TracerDialog {
     TraceInputDialog input =
         new TraceInputDialog(shell, models, widgets, models.devices::loadDevices);
     if (loadDevicesAndShowDialog(input, models) == Window.OK) {
-      TraceProgressDialog progress = new TraceProgressDialog(shell, input.getValue(), widgets.theme);
-      AtomicBoolean failed = new AtomicBoolean(false);
-      Tracer.Trace trace = Tracer.trace(client, shell, input.getValue(), new Tracer.Listener() {
-        @Override
-        public void onProgress(String message) {
-          progress.append(message);
-        }
-
-        @Override
-        public void onFailure(Throwable error) {
-          progress.append("Tracing failed:");
-          progress.append(Throwables.getStackTraceAsString(error));
-          failed.set(true);
-        }
-      });
+      TraceProgressDialog progress = new TraceProgressDialog(
+          shell, models.analytics, input.getValue(), widgets.theme);
+      Tracer.Trace trace = Tracer.trace(client, shell, input.getValue(), progress);
       progress.setTrace(trace);
       progress.open();
 
-      if (!failed.get()) {
+      if (progress.successful()) {
         models.capture.loadCapture(input.getValue().output);
       }
     }
@@ -551,16 +539,25 @@ public class TracerDialog {
   /**
    * Dialog that shows trace progress to the user and allows the user to stop the capture.
    */
-  private static class TraceProgressDialog extends DialogBase {
+  private static class TraceProgressDialog extends DialogBase implements Tracer.Listener {
     private static final int STATUS_INTERVAL_MS = 1000;
 
-    private final StringBuilder log = new StringBuilder();
+    private final Analytics analytics;
     private final Tracer.TraceRequest request;
-    private Text text;
+    private Label statusLabel;
+    private Label bytesLabel;
+    private Text errorText;
+    private Button errorButton;
+
     private Tracer.Trace trace;
 
-    public TraceProgressDialog(Shell shell, Tracer.TraceRequest request, Theme theme) {
+    private StatusResponse status;
+    private Throwable error;
+
+    public TraceProgressDialog(
+        Shell shell, Analytics analytics, Tracer.TraceRequest request, Theme theme) {
       super(shell, theme);
+      this.analytics = analytics;
       this.request = request;
     }
 
@@ -568,13 +565,20 @@ public class TracerDialog {
       this.trace = trace;
     }
 
-    public void append(String line) {
-      ifNotDisposed(text, () -> {
-        log.append(line).append(text.getLineDelimiter());
-        int selection = text.getCharCount();
-        text.setText(log.toString());
-        text.setSelection(selection);
-      });
+    public boolean successful() {
+      return error == null;
+    }
+
+    @Override
+    public void onProgress(StatusResponse progress) {
+      status = progress;
+      update();
+    }
+
+    @Override
+    public void onFailure(Throwable e) {
+      error = e;
+      update();
     }
 
     @Override
@@ -586,18 +590,79 @@ public class TracerDialog {
     protected Control createDialogArea(Composite parent) {
       Composite area = (Composite)super.createDialogArea(parent);
 
-      Composite container = createComposite(area, new GridLayout(1, false));
+      Composite container = createComposite(area, new GridLayout(2, false));
       container.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
 
       createBoldLabel(container, request.getProgressDialogTitle())
-          .setLayoutData(new GridData(SWT.FILL, SWT.TOP, true, false));
+          .setLayoutData(withSpans(new GridData(SWT.FILL, SWT.TOP, true, false), 2, 1));
 
-      text = createTextarea(container, log.toString());
-      text.setEditable(false);
-      text.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
+      createLabel(container, "Status:");
+      statusLabel = withLayoutData(createLabel(container, "Submitting request"),
+          new GridData(SWT.FILL, SWT.TOP, true, false));
+
+      createLabel(container, "Captured so far:");
+      bytesLabel = withLayoutData(createLabel(container, "0 Bytes"),
+          new GridData(SWT.FILL, SWT.TOP, true, false));
+
+      errorText = withLayoutData(createTextbox(container, SWT.WRAP | SWT.READ_ONLY, ""),
+          withIndents(withSpans(new GridData(SWT.FILL, SWT.TOP, true, false), 2, 1), 0, 10));
+      errorText.setBackground(container.getBackground());
+      errorText.setVisible(false);
+
+      errorButton = Widgets.createButton(container, "Details", e ->
+          ErrorDialog.showErrorDialog(getShell(), analytics, getErrorMessage(), error));
+      errorButton.setVisible(false);
+
+      update();
 
       Widgets.scheduleUntilDisposed(getShell(), STATUS_INTERVAL_MS, trace::getStatus);
       return area;
+    }
+
+    private void update() {
+      // UI not initialized yet.
+      if (statusLabel == null) {
+        return;
+      }
+
+      if (status != null) {
+        statusLabel.setText(status.getStatus().name());
+        long bytes = status.getBytesCaptured();
+        if (bytes < 1024 + 512) {
+          bytesLabel.setText(bytes + " Bytes");
+        } else if (bytes < (1024 + 512) * 1024) {
+          bytesLabel.setText(String.format("%.1f KBytes", bytes / 1024.0));
+        } else if (bytes < (1024 + 512) * 1024 * 1024) {
+          bytesLabel.setText(String.format("%.2f MBytes", bytes / 1024.0 / 1024.0));
+        } else {
+          bytesLabel.setText(String.format("%.2f GBytes", bytes / 1024.0 / 1024.0 / 1024.0));
+        }
+
+        if (status.getStatus() == Service.TraceStatus.Done) {
+          Button button = getButton(IDialogConstants.OK_ID);
+          if (button != null) {
+            button.setText("Done");
+          }
+        }
+      }
+      if (error != null) {
+        statusLabel.setText("Failed");
+        errorText.setText(getErrorMessage());
+        errorText.setVisible(true);
+        errorButton.setVisible(true);
+
+        errorText.requestLayout();
+        Point curr = getShell().getSize();
+        Point want = getShell().computeSize(SWT.DEFAULT, SWT.DEFAULT);
+        if (want.y > curr.y) {
+          getShell().setSize(new Point(curr.x, want.y));
+        }
+      }
+    }
+
+    private String getErrorMessage() {
+      // TODO: the server doesn't return nice errors yet.
+      return (error == null) ? "" : error.getMessage();
     }
 
     @Override

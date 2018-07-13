@@ -15,7 +15,6 @@
  */
 package com.google.gapid.server;
 
-import com.google.common.collect.Lists;
 import com.google.gapid.models.Devices.DeviceCaptureInfo;
 import com.google.gapid.proto.service.Service;
 import com.google.gapid.rpc.Rpc;
@@ -27,7 +26,6 @@ import com.google.gapid.widgets.Widgets;
 import org.eclipse.swt.widgets.Shell;
 
 import java.io.File;
-import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
@@ -41,7 +39,7 @@ public class Tracer {
   public static Trace trace(Client client, Shell shell, TraceRequest request, Listener listener) {
     AtomicBoolean done = new AtomicBoolean();
     GapidClient.StreamSender<Service.TraceRequest> sender = client.streamTrace(message -> {
-      Widgets.scheduleIfNotDisposed(shell, () -> listener.onProgress(message.toString()));
+      Widgets.scheduleIfNotDisposed(shell, () -> listener.onProgress(message));
       if (message.getStatus() == Service.TraceStatus.Done && done.compareAndSet(false, true)) {
         return GapidClient.Result.DONE;
       }
@@ -116,7 +114,7 @@ public class Tracer {
     /**
      * Event indicating output from the tracing process.
      */
-    public default void onProgress(String message) { /* empty */ }
+    public default void onProgress(Service.StatusResponse status) { /* empty */ }
 
     /**
      * Event indicating that tracing has failed.
@@ -140,7 +138,8 @@ public class Tracer {
     public boolean start();
 
     /**
-     * Queries for trace status. The status is communicated via {@link Listener#onProgress(String)}.
+     * Queries for trace status. The status is communicated via
+     * {@link Listener#onProgress(com.google.gapid.proto.service.Service.StatusResponse)}.
      * @returns whether the status request was sent.
      */
     public boolean getStatus();
@@ -176,8 +175,8 @@ public class Tracer {
     }
 
     public String getProgressDialogTitle() {
-      // DO NOT CHECK THIS IN, JUST GETTING THINGS WORKING
-      return "foo";
+      // TODO: don't use uri.
+      return "Capturing " + uri + " to " + output.getName();
     }
   }
 }
