@@ -125,7 +125,7 @@ public class Devices {
         ListenableFuture<Service.Value> dev = client.get(Paths.toAny(path));
         ListenableFuture<Service.Value> props = client.get(Paths.traceInfo(path));
         results.add(Futures.transform(Futures.allAsList(dev, props), l -> {
-          return new DeviceCaptureInfo(l.get(0).getDevice(), l.get(1).getTraceConfig());
+          return new DeviceCaptureInfo(path, l.get(0).getDevice(), l.get(1).getTraceConfig());
         }));
       }
       return Futures.allAsList(results);
@@ -198,10 +198,15 @@ public class Devices {
    *  are valid for that device.
    */
   public static class DeviceCaptureInfo {
+    public Path.Device     path;
     public Device.Instance device;
     public Service.DeviceTraceConfiguration traceConfiguration;
 
-    DeviceCaptureInfo(Device.Instance device, Service.DeviceTraceConfiguration traceConfiguration) {
+    DeviceCaptureInfo(
+      Path.Device path,
+      Device.Instance device,
+      Service.DeviceTraceConfiguration traceConfiguration) {
+      this.path = path;
       this.device = device;
       this.traceConfiguration = traceConfiguration;
     }

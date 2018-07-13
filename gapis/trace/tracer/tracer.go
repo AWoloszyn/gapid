@@ -97,12 +97,12 @@ type Tracer interface {
 func (o TraceOptions) GapiiOptions() gapii.Options {
 	apis := uint32(0)
 	for _, api := range o.APIs {
-		if api == "gles" ||
-			api == "gvr" {
+		if api == "OpenGLES" ||
+			api == "GVR" {
 			apis |= gapii.GlesAPI
 			apis |= gapii.GvrAPI
 		}
-		if api == "vulkan" {
+		if api == "Vulkan" {
 			apis |= gapii.VulkanAPI
 		}
 	}

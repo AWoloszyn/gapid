@@ -144,10 +144,10 @@ func (verb *traceVerb) Run(ctx context.Context, flags flag.FlagSet) error {
 
 	switch verb.API {
 	case "vulkan":
-		options.Apis = []string{"vulkan"}
+		options.Apis = []string{"Vulkan"}
 	case "gles":
 		// TODO: Separate these two out once we can trace Vulkan with OpenGL ES.
-		options.Apis = []string{"gles", "gvr"}
+		options.Apis = []string{"OpenGLES", "GVR"}
 	case "":
 		options.Apis = []string{"vulkan", "gles", "gvr"}
 	default:
@@ -171,7 +171,7 @@ func (verb *traceVerb) Run(ctx context.Context, flags flag.FlagSet) error {
 	log.I(ctx, "Trace Status %+v", status)
 
 	handlerInstalled := false
-	
+
 	for {
 		time.Sleep(time.Second * 3)
 		status, err = handler.Event(service.TraceEvent_Status)

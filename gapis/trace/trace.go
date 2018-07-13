@@ -28,6 +28,9 @@ import (
 
 func Trace(ctx context.Context, device *path.Device, start task.Signal, options *tracer.TraceOptions, written *int64) error {
 	mgr := GetManager(ctx)
+	if device  == nil {
+		return log.Errf(ctx, nil, "Invalid device path")
+	}
 	tracer, ok := mgr.tracers[device.Id.ID()]
 	if !ok {
 		return log.Errf(ctx, nil, "Could not find tracer for device %d", device.Id.ID())

@@ -181,6 +181,13 @@ public class GapidClientGrpc implements GapidClient {
     return handler.future;
   }
 
+  @Override
+  public StreamSender<Service.TraceRequest> streamTrace(
+      Consumer<Service.TraceResponse> onTraceResponse) {
+    StreamHandler<Service.TraceResponse> handler= StreamHandler.wrap(onTraceResponse);
+    return new Sender<Service.TraceRequest>(handler.future, stub.trace(handler));
+  }
+
   private static class StreamHandler<T> implements StreamObserver<T> {
     public final SettableFuture<Void> future = SettableFuture.create();
     private final Consumer<T> consumer;
@@ -206,6 +213,32 @@ public class GapidClientGrpc implements GapidClient {
     @Override
     public void onError(Throwable t) {
       future.setException(t);
+    }
+  }
+
+  private static class Sender<T> implements StreamSender<T> {
+    public final SettableFuture<Void> future;
+    private final StreamObserver<T> observer;
+
+    public Sender(SettableFuture<Void> future,
+                        StreamObserver<T> observer) {
+      this.future = future;
+      this.observer = observer;
+    }
+
+    @Override
+    public synchronized void send(T value) {
+      observer.onNext(value);
+    }
+
+    @Override
+    public synchronized void finish() {
+      observer.onCompleted();
+    }
+
+    @Override
+    public ListenableFuture<Void> closed() {
+      return future;
     }
   }
 }

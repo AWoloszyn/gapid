@@ -64,4 +64,6 @@ public interface GapidClient {
   public ListenableFuture<Void> streamLog(Consumer<Log.Message> onLogMessage);
   public ListenableFuture<Void> streamSearch(
       Service.FindRequest request, Consumer<Service.FindResponse> onResult);
+  public StreamSender<Service.TraceRequest> streamTrace(
+      Consumer<Service.TraceResponse> onTraceResponse);
 }

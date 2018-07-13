@@ -274,7 +274,6 @@ func (s *server) Get(ctx context.Context, p *path.Any) (interface{}, error) {
 		return nil, log.Errf(ctx, err, "Invalid path: %v", p)
 	}
 	v, err := resolve.Get(ctx, p)
-	log.E(ctx, "Got %T, %+v", v, v);
 	if err != nil {
 		return nil, err
 	}
@@ -445,6 +444,8 @@ type Tracer struct {
 	startSignal  task.Signal
 	startFunc    task.Task
 	stopFunc     context.CancelFunc
+	doneSignal   task.Signal
+	doneSignalFunc task.Task
 }
 
 func (r *Tracer) Initialize(opts *service.TraceOptions) (*service.StatusResponse, error) {
@@ -456,9 +457,10 @@ func (r *Tracer) Initialize(opts *service.TraceOptions) (*service.StatusResponse
 	go func() {
 		r.err = trace.Trace(r.ctx, opts.Device, r.startSignal, &tracerOptions, &r.bytesWritten)
 		r.done = true
+		r.doneSignalFunc(r.ctx)
 	}()
 
-	stat := service.TraceStatus_Capturing
+	stat := service.TraceStatus_Initializing;
 	if opts.DeferStart {
 		stat = service.TraceStatus_WaitingToStart
 	} else {
@@ -487,22 +489,34 @@ func (r *Tracer) Event(req service.TraceEvent) (*service.StatusResponse, error) 
 			return nil, log.Errf(r.ctx, nil, "Invalid to start an already running trace")
 		}
 		r.startFunc(r.ctx)
+		r.started = true;
 	case service.TraceEvent_Stop:
 		if !r.started {
 			return nil, log.Errf(r.ctx, nil, "Cannot end a trace that was not started")
 		}
 		r.stopFunc()
-		r.done = true
+		r.doneSignal.Wait(r.ctx)
 	case service.TraceEvent_Status:
 		// intentionally empty
 	}
 
 	status := service.TraceStatus_Uninitialized
+	bytes := atomic.LoadInt64(&r.bytesWritten)
+	
 	if r.initialized {
-		status = service.TraceStatus_WaitingToStart
+		if bytes == 0 {
+			status = service.TraceStatus_Initializing
+		} else {
+			status = service.TraceStatus_WaitingToStart
+		}
 	}
+
 	if r.started {
-		status = service.TraceStatus_Capturing
+		if bytes == 0 {
+			status = service.TraceStatus_Initializing
+		} else {
+			status = service.TraceStatus_Capturing
+		}
 	}
 	if r.done {
 		status = service.TraceStatus_Done
@@ -523,6 +537,7 @@ func (r *Tracer) Dispose() {
 func (s *server) Trace(ctx context.Context) (service.TraceHandler, error) {
 	startSignal, startFunc := task.NewSignal()
 	ctx, stop := context.WithCancel(ctx)
+	doneSignal, doneSigFunc := task.NewSignal()
 	return &Tracer{
 		ctx,
 		false,
@@ -533,5 +548,7 @@ func (s *server) Trace(ctx context.Context) (service.TraceHandler, error) {
 		startSignal,
 		startFunc,
 		stop,
+		doneSignal,
+		doneSigFunc,
 	}, nil
 }

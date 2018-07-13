@@ -969,8 +969,9 @@ message TraceRequest {
 
 enum TraceStatus {
   Uninitialized = 0;
-  Capturing = 1;
-  WaitingToStart = 2;
+  Initializing = 1;
+  Capturing = 2;
+  WaitingToStart = 3;
   Done = 4;
 }
 

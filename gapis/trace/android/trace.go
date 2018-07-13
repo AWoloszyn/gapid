@@ -118,7 +118,6 @@ func (t *AndroidTracer) APITraceOptions(ctx context.Context) []tracer.APITraceOp
 	if len(t.b.Instance().Configuration.Drivers.Vulkan.PhysicalDevices) > 0 {
 		options = append(options, tracer.VulkanTraceOptions())
 	}
-	log.E(ctx, "Options!! %+v\n", t.b.Instance().Configuration.Drivers)
 	return options
 }
 

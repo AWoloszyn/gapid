@@ -237,6 +237,12 @@ public class Client {
     return client.streamSearch(request, onResult);
   }
 
+   public StreamSender<Service.TraceRequest> streamTrace(
+      Consumer<Service.TraceResponse> onTraceResponse) {
+    LOG.log(FINE, "RPC->streamTrace()");
+    return client.streamTrace(onTraceResponse);
+  }
+
   private static <V> ListenableFuture<V> call(
       Supplier<String> stackMessage, Function<Stack, ListenableFuture<V>> call) {
     SettableFuture<V> result = SettableFuture.create();

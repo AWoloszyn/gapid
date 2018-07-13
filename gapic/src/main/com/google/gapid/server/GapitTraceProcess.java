@@ -51,26 +51,6 @@ public class GapitTraceProcess extends ChildProcess<Boolean> {
     List<String> args = Lists.newArrayList();
     args.add(GapiPaths.get().gapit().getAbsolutePath());
 
-    if (settings.analyticsEnabled()) {
-      args.add("-analytics");
-      args.add(settings.analyticsClientId);
-    }
-
-    args.add("-log-level");
-    args.add(logLevel.get().gapisLevel);
-
-    GapiPaths.get().addRunfilesFlag(args);
-
-    args.add("trace");
-
-    String adb = GapiPaths.adb(settings);
-    if (!adb.isEmpty()) {
-      args.add("--adb");
-      args.add(adb);
-    }
-
-    request.appendCommandLine(args);
-
     pb.command(args);
     return null;
   }
