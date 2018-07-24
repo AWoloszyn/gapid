@@ -189,6 +189,9 @@ type (
 		}
 		Disable struct {
 			PCS bool `help:"disable pre-compiled shaders"`
+			Unknown struct {
+				Extensions bool `help:"Hide unknown extensions from the application."`
+			}
 		}
 		Record struct {
 			Errors bool `help:"_record device error state"`
