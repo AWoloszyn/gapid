@@ -162,12 +162,14 @@ cmd VkResult vkMapMemory(
   read(ppData[0:1])
   memoryLocation := ?
   ppData[0] = memoryLocation
-
-  mapMemory(ppData, as!u8*(memoryLocation)[0:memoryObject.MappedSize])
-  memoryObject.MappedLocation = memoryLocation
+  
   if (IsMemoryCoherent(memoryObject)) {
-    trackMappedCoherentMemory(as!u64(memoryObject.MappedLocation), as!size(memoryObject.MappedSize))
+    trackMappedCoherentMemory(ppData, as!size(memoryObject.MappedSize))
   }
+
+  memoryObject.MappedLocation = ppData[0]
+
+  mapMemory(memoryObject.MappedLocation, as!u8*(memoryObject.MappedLocation)[0:memoryObject.MappedSize])
   return ?
 }
 
@@ -182,7 +184,7 @@ cmd void vkUnmapMemory(
   mappedLocation := as!u8*(memoryObject.MappedLocation)
   if (IsMemoryCoherent(memoryObject)) {
     readCoherentMemory(memoryObject, memoryObject.MappedOffset, memoryObject.MappedSize)
-    untrackMappedCoherentMemory(as!u64(memoryObject.MappedLocation), as!size(memoryObject.MappedSize))
+    untrackMappedCoherentMemory(memoryObject.MappedLocation, as!size(memoryObject.MappedSize))
   }
   unmapMemory(mappedLocation[0:memoryObject.MappedSize])
   memoryObject.MappedSize = 0

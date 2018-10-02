@@ -14,13 +14,15 @@
  * limitations under the License.
  */
 
+#include "core/memory_tracker/cc/memory_protections.h"
+
 #include <functional>
 namespace gapii {
 namespace track_memory {
 
 class WindowsMemoryTracker {
   public:
-    WindowsMemoryTracker(std::function<bool(void*)> segfault_function):
+    WindowsMemoryTracker(std::function<bool(void*, PageProtections)> segfault_function):
       vectored_exception_handler_(nullptr),
       handle_segfault_(segfault_function) {
     }
@@ -45,10 +47,20 @@ class WindowsMemoryTracker {
   // othwerwise returns false.
   bool inline DisableMemoryTrackerImpl();
 
+  struct trackable_memory{
+    void* primary_address;
+    void* secondary_address;
+  };
+
+  inline trackable_memory AllocateTrackableMemory(size_t length);
+
+  inline void FreeTrackableMemory(void* ptr, void* secondary, size_t length);
+
+
   private:
   void* vectored_exception_handler_; // The currently registered vectored exception
                                      // handler. Nullptr if this is none.
-   std::function<bool(void*)> handle_segfault_; // The function to be called when there is a segfault.
+   std::function<bool(void*, PageProtections)> handle_segfault_; // The function to be called when there is a segfault.
 };
 
 typedef MemoryTrackerImpl<WindowsMemoryTracker> MemoryTracker;
@@ -59,8 +71,14 @@ extern WindowsMemoryTracker* unique_tracker;
 LONG NTAPI WindowsMemoryTracker::VectoredExceptionHandler(struct _EXCEPTION_POINTERS *info){
   if (info->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION &&
         unique_tracker) {
+    PageProtections prot = PageProtections::kRead;
+    if (info->ExceptionRecord->ExceptionInformation[0] != 0) {
+      prot = PageProtections::kWrite;
+    }
+
     if (unique_tracker->handle_segfault_(
-        reinterpret_cast<void*>(info->ExceptionRecord->ExceptionInformation[1]))) {
+        reinterpret_cast<void*>(info->ExceptionRecord->ExceptionInformation[1]),
+        prot)) {
       return EXCEPTION_CONTINUE_EXECUTION;
     }
   }
@@ -94,6 +112,22 @@ bool inline WindowsMemoryTracker::DisableMemoryTrackerImpl() {
     return ret != 0;
   }
   return true;
+}
+
+
+WindowsMemoryTracker::trackable_memory WindowsMemoryTracker::AllocateTrackableMemory(size_t length) {
+  HANDLE h = CreateFileMapping(INVALID_HANDLE_VAUE, 
+    NULL, PAGE_READWRITE, 0, length, NULL);
+
+  void* mem1 = MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0, length);
+  void* mem2 = MapViewOfFile(h, FILE_MAP_ALL_ACCESS, 0, 0, length);
+  CloseHandle(h);
+  return {mem1, mem2};
+}
+
+void WindowsMemoryTracker::FreeTrackableMemory(void* primary, void* secondary, size_t length) {
+  UnmapViewOfFile(primary);
+  UnmapViewOfFile(secondary);
 }
 
 } // namespace track_memory

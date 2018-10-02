@@ -18,6 +18,9 @@
 
 #if COHERENT_TRACKING_ENABLED
 #include <map>
+#include <cassert>
+#include <cstring>
+#include <emmintrin.h>  
 
 namespace gapii {
 namespace track_memory {
@@ -67,89 +70,179 @@ std::vector<void*> DirtyPageTable::DumpAndClearAll() {
 }
 
 template <>
-bool MemoryTracker::AddTrackingRangeImpl(void* start, size_t size) {
-  if (!EnableMemoryTrackerImpl()) {
-    return false;
+void MemoryTracker::TrackMappedMemoryImpl(void** _start, size_t size) {
+  void* start = _start[0];
+  if (size == 0) return;
+  if (IsInRanges(reinterpret_cast<uintptr_t>(start), ranges_)) return;
+
+  uintptr_t size_aligned = GetPageEnd(size, page_size_);
+  trackable_memory tm = AllocateTrackableMemory(size_aligned);
+  void* ret_mem = tm.primary_address;
+  uintptr_t retm = reinterpret_cast<uintptr_t>(ret_mem);
+  void* cache = malloc(size_aligned);
+  assert((retm & (GetPageSize()-1)) == 0);
+  memcpy(ret_mem, start, size);
+  memcpy(cache, start, size);
+
+  cpu_written_pages_.Reserve(size_aligned / page_size_);
+  cpu_read_pages_.Reserve(size_aligned / page_size_);
+  ranges_[reinterpret_cast<uintptr_t>(ret_mem)] = range{size, size_aligned, reinterpret_cast<uintptr_t>(start)};
+  
+  cpu_alloc_info[retm] = allocation_info{start, tm.secondary_address, cache};
+  for (uintptr_t i = retm; i < retm + size_aligned; i += GetPageSize()) {
+    status_[i] = page_status{PageProtections::kNone};
   }
 
-  if (size == 0) return false;
-  if (IsInRanges(reinterpret_cast<uintptr_t>(start), ranges_)) return false;
-
-  void* start_page_addr = GetAlignedAddress(start, page_size_);
-  size_t size_aligned = GetAlignedSize(start, size, page_size_);
-  dirty_pages_.Reserve(size_aligned / page_size_);
-  ranges_[reinterpret_cast<uintptr_t>(start)] = size;
-  return set_protection(start_page_addr, size_aligned,
-                        track_read_ ? PageProtections::kNone
-                                    : PageProtections::kRead) == 0;
+  set_protection(ret_mem, size_aligned, PageProtections::kNone);
+  _start[0] = ret_mem;
 }
 
 template <>
-bool MemoryTracker::RemoveTrackingRangeImpl(void* start, size_t size) {
-  if (size == 0) return false;
-  auto it = ranges_.find(reinterpret_cast<uintptr_t>(start));
+bool MemoryTracker::UntrackMappedMemoryImpl(void* start, size_t size) {
+  auto gpu_it = cpu_alloc_info.find(reinterpret_cast<uintptr_t>(start));
+  if (gpu_it == cpu_alloc_info.end()) {
+    return false;
+  }
+
+  auto it = ranges_.find(gpu_it->first);
   if (it == ranges_.end()) return false;
 
+  cpu_written_pages_.RecollectIfPossible(it->second.allocatedSize / page_size_);
+  cpu_read_pages_.RecollectIfPossible(it->second.allocatedSize / page_size_);
+  FreeTrackableMemory(reinterpret_cast<void*>(gpu_it->first), (gpu_it->second.read_write_cpu_addr), it->second.allocatedSize);
+  free(gpu_it->second.cache_addr);
   ranges_.erase(it);
-  void* start_page_addr = GetAlignedAddress(start, page_size_);
-  size_t size_aligned = GetAlignedSize(start, size, page_size_);
-  dirty_pages_.RecollectIfPossible(size_aligned / page_size_);
+  cpu_alloc_info.erase(gpu_it);
 
-  bool result = true;
-  for (uint8_t* p = reinterpret_cast<uint8_t*>(start_page_addr);
-       p < reinterpret_cast<uint8_t*>(start_page_addr) + size_aligned;
-       p = p + page_size_) {
-    if (!IsInRanges(reinterpret_cast<uintptr_t>(p), ranges_, true)) {
-      result &= set_protection(p, page_size_, PageProtections::kReadWrite) == 0;
-    }
-  }
-  return result;
-}
-
-template <>
-bool MemoryTracker::ClearTrackingRangesImpl() {
-  if (std::any_of(ranges_.begin(), ranges_.end(),
-                  [this](std::pair<uintptr_t, size_t> r) {
-                    void* start = reinterpret_cast<void*>(r.first);
-                    size_t size = r.second;
-                    void* start_page_addr =
-                        GetAlignedAddress(start, page_size_);
-                    size_t size_aligned =
-                        GetAlignedSize(start, size, page_size_);
-                    dirty_pages_.RecollectIfPossible(size_aligned / page_size_);
-                    // TODO(qining): Add Windows support
-                    return set_protection(start_page_addr, size_aligned,
-                                          PageProtections::kReadWrite) != 0;
-                  })) {
-    return false;
-  }
-  ranges_.clear();
   return true;
 }
 
 template <>
-bool MemoryTracker::HandleSegfaultImpl(void* fault_addr) {
+void MemoryTracker::UntrackAllMappedMemory() {
+  for (auto gpu_it = cpu_alloc_info.begin(); gpu_it != cpu_alloc_info.end();) {
+    auto it = ranges_.find(gpu_it->first);
+    FreeTrackableMemory(reinterpret_cast<void*>(gpu_it->first), (gpu_it->second.read_write_cpu_addr), it->second.allocatedSize);
+    free(gpu_it->second.cache_addr);
+    ranges_.erase(it);
+    gpu_it = cpu_alloc_info.erase(gpu_it);
+  }
+}
+
+template <>
+void MemoryTracker::ResetCPUReadPagesImpl() {
+  std::vector<void*> pages = 
+    cpu_read_pages_.DumpAndClearAll();
+
+  for (auto& pg: pages) {
+    uintptr_t pa = reinterpret_cast<uintptr_t>(pg);
+    page_status& s = status_[pa];
+    set_protection(pg, page_size_, s.prot ^ PageProtections::kRead);
+    s.prot = s.prot ^ PageProtections::kRead;
+  }
+}
+
+void CopyWithCache(void* dest, void* src, size_t size, void* cache) {
+#if defined(__x86_64) || defined(__i386)
+  int64_t* d = static_cast<int64_t*>(dest);
+  __m128i* s = static_cast<__m128i*>(src);
+  int64_t* c = static_cast<int64_t*>(cache);
+
+  for (size_t i = 0; i < size / sizeof(__m128i); ++i) {
+    __m128i _s = _mm_load_si128(&s[i]);
+    __m128i _c = _mm_load_si128((__m128i*)(&c[2*i]));
+    if (0xFFFF != _mm_movemask_epi8(_mm_cmpeq_epi8(_s, _c))) {
+      __m128i t = _mm_xor_si128(_s, _c);
+      alignas(16) int64_t v[2];
+      _mm_store_si128((__m128i*)(&c[2*i]), _s);
+      _mm_store_si128((__m128i*)(&v), t);
+      d[2*i] ^= v[0];
+      d[2*i + 1] ^= v[1];
+    }
+  }
+#else
+  int64_t* d = static_cast<int64_t*>(dest);
+  int64_t* s = static_cast<int64_t*>(src);
+  int64_t* c = static_cast<int64_t*>(cache);
+
+  for (size_t i = 0; i < size / sizeof(int64_t); ++i) {
+    int64_t t = s[i] ^ c[i];
+    c[i] ^= t;
+    d[i] ^= t;
+  }
+#endif
+}
+
+template <>
+void MemoryTracker::ForeachWrittenCPUPageImpl(std::function<void(uintptr_t, uintptr_t)> cb) {
+  std::vector<void*> pages = 
+    cpu_written_pages_.DumpAndClearAll();
+
+  for (auto& pg: pages) {
+    uintptr_t pa = reinterpret_cast<uintptr_t>(pg);
+    page_status& s = status_[pa];
+
+    auto it = cpu_alloc_info.upper_bound(pa);
+    it--;
+    uintptr_t cpu_offs = pa - it->first;
+    void* gpuAddr = reinterpret_cast<uint8_t*>(it->second.gpu_addr) + cpu_offs;
+    void* cpuAddr = reinterpret_cast<uint8_t*>(it->second.read_write_cpu_addr) + cpu_offs;
+    void* cacheAddr = reinterpret_cast<uint8_t*>(it->second.cache_addr) + cpu_offs;
+
+    set_protection(pg, page_size_, s.prot ^ PageProtections::kWrite);
+    cb(pa, reinterpret_cast<uintptr_t>(cpuAddr));
+    CopyWithCache(gpuAddr, cpuAddr, page_size_, cacheAddr);
+    s.prot = s.prot ^ PageProtections::kWrite;
+  }
+}
+
+template <>
+bool MemoryTracker::HandleSegfaultImpl(void* fault_addr, PageProtections faultType) {
   if (!IsInRanges(reinterpret_cast<uintptr_t>(fault_addr), ranges_, true)) {
     return false;
   }
 
   // The fault address is within a tracking range
   void* page_addr = GetAlignedAddress(fault_addr, page_size_);
-  if (dirty_pages_.Has(page_addr)) {
-    // Dirty pages should always be writable. But in practice, dirty pages may
-    // not be writable. E.g. One page is added to tracking ranges twice with
-    // two ranges that shares a common page, but not overlapping. The later
-    // added range will mark the shared page as read-only, even though the
-    // page has already been marked as dirty before.
-    set_protection(page_addr, page_size_, PageProtections::kReadWrite);
-    return true;
-  }
-  if (!dirty_pages_.Record(page_addr)) {
-    // The dirty page table does not have enough space pre-allocated,
-    // fallback to the original handler.
+  uintptr_t pa = reinterpret_cast<uintptr_t>(page_addr);
+  page_status& s = status_[pa];
+  
+  // We have a read/write page, and we got a fault. That is wrong
+  if (s.prot == PageProtections::kReadWrite) {
     return false;
   }
-  set_protection(page_addr, page_size_, PageProtections::kReadWrite);
+
+  if ((s.prot & faultType) != PageProtections::kNone) {
+    // We are falling into here because we have mis-protected a page
+    // previously, so free anything we dont have
+    faultType = PageProtections::kReadWrite ^ s.prot;
+  }
+
+
+  auto it = cpu_alloc_info.upper_bound(pa);
+  it--;
+
+  uintptr_t cpu_offs = pa - it->first;
+  void* gpuAddr =  reinterpret_cast<uint8_t*>(it->second.gpu_addr) + cpu_offs;
+  void* cpuAddr = reinterpret_cast<uint8_t*>(it->second.read_write_cpu_addr) + cpu_offs;
+  void* cacheAddr = reinterpret_cast<uint8_t*>(it->second.cache_addr) + cpu_offs;
+
+  faultType = faultType | s.prot;
+  s.prot = faultType;
+  set_protection(page_addr, page_size_, faultType);
+
+  if ((faultType & PageProtections::kRead) != PageProtections::kNone) {
+    if (!cpu_read_pages_.Record(page_addr)) {
+      return false;
+    }
+    CopyWithCache(cpuAddr, gpuAddr, page_size_, cacheAddr);
+  }
+
+  if ((faultType & PageProtections::kWrite) != PageProtections::kNone) {
+    if (!cpu_written_pages_.Record(page_addr)) {
+      return false;
+    }
+  }
+  
   return true;
 }
 

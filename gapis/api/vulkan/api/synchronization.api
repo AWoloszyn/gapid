@@ -108,7 +108,11 @@ cmd VkResult vkGetFenceStatus(
     VkFence  fence) {
   if !(device in Devices) { vkErrorInvalidDevice(device) }
   if !(fence in Fences) { vkErrorInvalidFence(fence) }
-  return ?
+  res := ?
+  if res == VK_SUCCESS {
+    notifyGPUWrite()
+  }
+  return res
 }
 
 @threadSafety("system")
@@ -132,6 +136,7 @@ cmd VkResult vkWaitForFences(
       vkErrorInvalidFence(f)
     }
   }
+  notifyGPUWrite()
   return ?
 }
 
@@ -230,7 +235,11 @@ cmd VkResult vkGetEventStatus(
     VkEvent  event) {
   if !(device in Devices) { vkErrorInvalidDevice(device) }
   if !(event in Events) { vkErrorInvalidEvent(event) }
-  return ?
+  res := ?
+  if res == VK_SUCCESS {
+    notifyGPUWrite()
+  }
+  return res
 }
 
 @threadSafety("system")

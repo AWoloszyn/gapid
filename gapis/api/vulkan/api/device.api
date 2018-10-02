@@ -120,6 +120,7 @@ cmd void vkDestroyDevice(
 cmd VkResult vkDeviceWaitIdle(
     VkDevice device) {
   if !(device in Devices) { vkErrorInvalidDevice(device) }
+  notifyGPUWrite()
   return ?
 }
 

@@ -88,13 +88,14 @@ import "errors.api"
 //  Extern functions  //
 ////////////////////////
 
-extern void mapMemory(void** mem, u8[] slice)
+extern void mapMemory(void* mem, u8[] slice)
 extern void unmapMemory(u8[] slice)
-extern void trackMappedCoherentMemory(u64 start, size size)
+extern void trackMappedCoherentMemory(void** start, size size)
+extern void untrackMappedCoherentMemory(void* start, size size)
 extern void readMappedCoherentMemory(VkDeviceMemory memory, u64 offset_in_mapped, size readSize)
-extern void untrackMappedCoherentMemory(u64 start, size size)
 extern bool hasDynamicProperty(const VkPipelineDynamicStateCreateInfo* info, VkDynamicState state)
 extern void notifyPendingCommandAdded(VkQueue queue)
+extern void notifyGPUWrite()
 extern void enterSubcontext()
 extern void nextSubcontext()
 extern void leaveSubcontext()

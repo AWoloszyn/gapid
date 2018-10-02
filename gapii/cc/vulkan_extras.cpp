@@ -391,16 +391,12 @@ bool VulkanSpy::observeFramebuffer(CallObserver* observer, uint32_t* w,
 }
 
 // Extern functions
-void VulkanSpy::trackMappedCoherentMemory(CallObserver*, uint64_t start,
+void VulkanSpy::trackMappedCoherentMemory(CallObserver*, void** start,
                                           size_val size) {
   // If the tracing not started yet, do not track the coherent memory
-  if (is_suspended()) {
-    return;
-  }
 #if COHERENT_TRACKING_ENABLED
   if (m_coherent_memory_tracking_enabled) {
-    void* start_addr = reinterpret_cast<void*>(start);
-    mMemoryTracker.AddTrackingRange(start_addr, size);
+    mMemoryTracker.TrackMappedMemory(start, size);
   }
 #endif  // COHERENT_TRACKING_ENABLED
 }
@@ -415,12 +411,35 @@ void VulkanSpy::readMappedCoherentMemory(CallObserver* observer,
 #if COHERENT_TRACKING_ENABLED
   if (m_coherent_memory_tracking_enabled) {
     const size_val page_size = mMemoryTracker.page_size();
+    uintptr_t baseCPUAddr = static_cast<uintptr_t>(-1);
+    uintptr_t baseGPUAddr = static_cast<uintptr_t>(-1);
+    core::IntervalList<uintptr_t> iVals;
+    iVals.setMergeThreshold(1);
     // Get the valid mapped range
-    const auto dirty_pages =
-        mMemoryTracker.GetAndResetDirtyPagesInRange(offset_addr, readSize);
-    for (const void* p : dirty_pages) {
-      uint64_t page_start = (uint64_t)(p);
-      observer->read(slice((uint8_t*)page_start, 0ULL, page_size));
+    mMemoryTracker.ForeachWrittenCPUPage(
+      [observer, page_size, &baseCPUAddr, &baseGPUAddr, &iVals, this] (uintptr_t cpuAddr, uintptr_t gpuAddr) {
+        if (!should_trace(kApiIndex)) {
+          return;
+        }
+      if (cpuAddr < baseCPUAddr) {
+        baseCPUAddr = cpuAddr;
+      }
+      if (gpuAddr < baseGPUAddr) {
+        baseGPUAddr = gpuAddr;
+      }
+      iVals.merge(core::Interval<uintptr_t>{gpuAddr, gpuAddr + page_size});
+    });
+
+    for (auto p : iVals) {
+      uint8_t* data = reinterpret_cast<uint8_t*>(p.start());
+      uint64_t size = p.end() - p.start();
+      auto resIndex = sendResource(kApiIndex, data, size);
+      auto observation = new memory::Observation();
+      uint64_t base = (p.start() - baseGPUAddr) + baseCPUAddr;
+      observation->set_base(base);
+      observation->set_size(size);
+      observation->set_res_index(resIndex);
+      observer->encodeAndDelete(observation);
     }
     return;
   }
@@ -428,17 +447,24 @@ void VulkanSpy::readMappedCoherentMemory(CallObserver* observer,
   observer->read(slice((uint8_t*)offset_addr, 0ULL, readSize));
 }
 
-void VulkanSpy::untrackMappedCoherentMemory(CallObserver*, uint64_t start,
+void VulkanSpy::untrackMappedCoherentMemory(CallObserver*, void* start,
                                             size_val size) {
 #if COHERENT_TRACKING_ENABLED
   if (m_coherent_memory_tracking_enabled) {
-    void* start_addr = reinterpret_cast<void*>(start);
-    mMemoryTracker.RemoveTrackingRange(start_addr, size);
+    mMemoryTracker.UntrackMappedMemory(start, size);
   }
 #endif  // COHERENT_TRACKING_ENABLED
 }
 
-void VulkanSpy::mapMemory(CallObserver*, void**, gapil::Slice<uint8_t>) {}
+void VulkanSpy::notifyGPUWrite(CallObserver*) {
+  #if COHERENT_TRACKING_ENABLED
+  if (m_coherent_memory_tracking_enabled) {
+    mMemoryTracker.ResetCPUReadPages();
+  }
+#endif  // COHERENT_TRACKING_ENABLED
+}
+
+void VulkanSpy::mapMemory(CallObserver*, void*, gapil::Slice<uint8_t>) {}
 void VulkanSpy::unmapMemory(CallObserver*, gapil::Slice<uint8_t>) {}
 void VulkanSpy::recordFenceSignal(CallObserver*, uint64_t) {}
 void VulkanSpy::recordFenceWait(CallObserver*, uint64_t) {}

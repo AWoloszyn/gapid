@@ -16,6 +16,8 @@
 
 #ifndef GAPII_MEMORY_PROTECTIONS_H
 #define GAPII_MEMORY_PROTECTIONS_H
+#include <type_traits>
+
 
 namespace gapii {
 namespace track_memory {
@@ -26,6 +28,25 @@ enum class PageProtections {
   kWrite = 0x2,
   kReadWrite = 0x1 | 0x2
 };
+
+inline PageProtections operator|(const PageProtections& a, const PageProtections& b) {
+  using ppType = typename std::underlying_type<PageProtections>::type;
+  return static_cast<PageProtections>(
+    static_cast<ppType>(a) | static_cast<ppType>(b));
+}
+
+inline PageProtections operator&(const PageProtections& a, const PageProtections& b) {
+  using ppType = typename std::underlying_type<PageProtections>::type;
+  return static_cast<PageProtections>(
+    static_cast<ppType>(a) & static_cast<ppType>(b));
+}
+
+
+inline PageProtections operator^(const PageProtections& a, const PageProtections& b) {
+  using ppType = typename std::underlying_type<PageProtections>::type;
+  return static_cast<PageProtections>(
+    static_cast<ppType>(a) ^ static_cast<ppType>(b));
+}
 
 }  // namespace track_memory
 }  // namespace gapii

@@ -37,11 +37,13 @@
 
 #include <algorithm>
 #include <atomic>
+#include <functional>
 #include <iterator>
 #include <list>
 #include <map>
 #include <utility>
 #include <vector>
+#include <unordered_map>
 
 #include "core/memory_tracker/cc/memory_protections.h"
 
@@ -56,6 +58,12 @@ inline void* GetAlignedAddress(void* addr, size_t alignment) {
   return reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(addr) &
                                  ~(alignment - 1u));
 }
+
+// Returns the end of the page that is >= addr.
+inline uintptr_t GetPageEnd(uintptr_t addr, size_t pagesize) {
+  return ((addr + pagesize) & ~(pagesize - 1u));
+}
+
 
 // For a given memory range specified by staring address: |addr| and size:
 // |size_unaligned|, returns the size of memory space occupied by the range in
@@ -81,57 +89,7 @@ inline size_t GetAlignedSize(void* addr, size_t size_unaligned,
          reinterpret_cast<uintptr_t>(start_addr_aligned);
 }
 
-// A helper function to tell whether a given address is covered in a bunch of
-// memory ranges. If |page_aligned_ranges| is set to true, the ranges' address
-// will be aligned to page boundary, so if the |addr| is not in a range, but
-// shares a common memory page with the range, it will be considered as in the
-// range. By default |page_aligned_ranges| is set to false. Returns true if
-// the address is considered in the range, otherwise returns false.
-inline bool IsInRanges(uintptr_t addr, std::map<uintptr_t, size_t>& ranges,
-                       bool page_aligned_ranges = false) {
-  auto get_aligned_addr = [](uintptr_t addr) {
-    return reinterpret_cast<uintptr_t>(
-        GetAlignedAddress(reinterpret_cast<void*>(addr), GetPageSize()));
-  };
-  auto get_aligned_size = [](uintptr_t addr, size_t size) {
-    return reinterpret_cast<uintptr_t>(
-        GetAlignedSize(reinterpret_cast<void*>(addr), size, GetPageSize()));
-  };
-  // It is not safe to call std::prev() if the container is empty, so the empty
-  // case is handled first.
-  if (ranges.size() == 0) {
-    return false;
-  }
-  auto it = ranges.lower_bound(addr);
-  // Check if the lower bound range already covers the addr.
-  if (it != ranges.end()) {
-    if (it->first == addr) {
-      return true;
-    }
-    if (page_aligned_ranges) {
-      uintptr_t aligned_range_start = get_aligned_addr(it->first);
-      if (aligned_range_start <= addr) {
-        return true;
-      }
-    }
-  }
-  if (it == ranges.begin()) {
-    return false;
-  }
-  // Check the previous range
-  auto pit = std::prev(it, 1);
-  uintptr_t range_start =
-      page_aligned_ranges ? get_aligned_addr(pit->first) : pit->first;
-  uintptr_t range_size = page_aligned_ranges
-                             ? get_aligned_size(pit->first, pit->second)
-                             : pit->second;
-  if (addr < range_start || addr >= range_start + range_size) {
-    return false;
-  }
-  return true;
-}
-
-// SpinLock is a spin lock implemented with atomic variable and operations.
+// SpinLock is a spin lock implemented with atomic variable and opertions.
 // Mutiple calls to Lock in a single thread will result into a deadlock.
 class SpinLock {
  public:
@@ -309,26 +267,22 @@ class MemoryTrackerImpl : public SpecificMemoryTracker {
   // |track_read| is set to true, also tracks the memory read operations.
   // By default |track_read| is set to false.
   MemoryTrackerImpl(bool track_read = false)
-      : SpecificMemoryTracker([this](void* v) { return DoHandleSegfault(v); }),
-        track_read_(track_read),
+      : SpecificMemoryTracker([this](void* v, PageProtections p) { return DoHandleSegfault(v, p); }),
         page_size_(GetPageSize()),
-        l_(),
+        lock_(),
         ranges_(),
-        dirty_pages_(),
+        cpu_written_pages_(),
+        cpu_read_pages_(),
 #define CONSTRUCT_SIGNAL_SAFE(function) \
-  function(this, &MemoryTrackerImpl::function##Impl, &l_, SIGSEGV)
-        CONSTRUCT_SIGNAL_SAFE(AddTrackingRange),
-        CONSTRUCT_SIGNAL_SAFE(RemoveTrackingRange),
-        CONSTRUCT_SIGNAL_SAFE(GetDirtyPagesInRange),
-        CONSTRUCT_SIGNAL_SAFE(ResetPagesToTrack),
-        CONSTRUCT_SIGNAL_SAFE(GetAndResetAllDirtyPages),
-        CONSTRUCT_SIGNAL_SAFE(GetAndResetDirtyPagesInRange),
-        CONSTRUCT_SIGNAL_SAFE(ClearTrackingRanges),
+  function(this, &MemoryTrackerImpl::function##Impl, &lock_, SIGSEGV)
         CONSTRUCT_SIGNAL_SAFE(EnableMemoryTracker),
-        CONSTRUCT_SIGNAL_SAFE(DisableMemoryTracker),
+        CONSTRUCT_SIGNAL_SAFE(TrackMappedMemory),
+        CONSTRUCT_SIGNAL_SAFE(UntrackMappedMemory),
+        CONSTRUCT_SIGNAL_SAFE(ForeachWrittenCPUPage),
+        CONSTRUCT_SIGNAL_SAFE(ResetCPUReadPages),
 #undef CONSTRUCT_SIGNAL_SAFE
 #define CONSTRUCT_LOCKED(function) \
-  function(this, &MemoryTrackerImpl::function##Impl, &l_)
+  function(this, &MemoryTrackerImpl::function##Impl, &lock_)
         CONSTRUCT_LOCKED(HandleSegfault)
 #undef CONSTRUCT_LOCKED
   {
@@ -340,103 +294,71 @@ class MemoryTrackerImpl : public SpecificMemoryTracker {
   MemoryTrackerImpl& operator=(MemoryTrackerImpl&&) = delete;
 
   ~MemoryTrackerImpl() {
-    DisableMemoryTracker();
-    ClearTrackingRanges();
+    UntrackAllMappedMemory();
   }
 
  protected:
-  // Adds an address range specified by starting address and size for tracking
-  // and set accessing permissions of the corresponding pages to track write
-  // (and read, if track_read is true) operations. Returns true if the range
-  // is added successfully, returns false when the operaion is not done
-  // successfully, e.g. the range overlaps with exisiting ranges or the size is
-  // 0. The ranges must not contain any pages that store the data of this
-  // memory tracker object, otherwise the segfault signal will be handled by
-  // the original handler and the application may crash. Safe memory ranges can
-  // be obtained from calls to vkMapMemory() or posix_memalign()/memalign()
-  // with the page size used as the alignment parameter.
-  bool AddTrackingRangeImpl(void* start, size_t size);
 
-  // Removes an address range specified with starting address and size from
-  // tracking. Also recovers the write and read permission of the corresponding
-  // memory pages. Returns true if the range is removed successfully, otherwise
-  // returns false. To have a successful removal, the given range must match
-  // exactly with an existing range, i.e. both the starting address and the
-  // size must match.
-  bool RemoveTrackingRangeImpl(void* start, size_t size);
+  // TrackMappedMemory registers the address of a GPU
+  // region of memory in which to track writes.
+  // Returns the pointer that should be used by the 
+  // application.
+  void TrackMappedMemoryImpl(void** memory, size_t size);
 
-  // Removes all the tracking ranges, recover the write and read permission of
-  // all the corresponding memory pages. Returns true if all the pages are
-  // recovered and ranges are removed, otherwise returns false;
-  bool ClearTrackingRangesImpl();
+  // UntrackMappedMemory stops tracking the GPU memory
+  // associated with this address.
+  bool UntrackMappedMemoryImpl(void* memory, size_t size);
 
-  // HandleSegfaultImpl is the core of memory tracker function. It
-  // checks wheter the fault address is within a tracking range. If so, it
-  // records the page address and recovers the read/write permission of that
-  // page and returns true. Otherwise, it return false.
-  // Besides, recording of the dirty page address must not allocates new memory
-  // space. If new space is required, fallback to the original segfault
-  // handler.
-  bool HandleSegfaultImpl(void* fault_addr);
+  // UntrackMappedMemory stops tracking the GPU memory
+  // associated with this address.
+  void UntrackAllMappedMemory();
 
-  // Returns a vector of dirty pages addresses and clear all the records of
-  // dirty pages, also resets the pages access permission, if they overlaps
-  // with any tracking ranges, to not-accessible or readonly depends on whether
-  // this memory tracker should track read operations.
-  std::vector<void*> GetAndResetAllDirtyPagesImpl() {
-    auto r =
-        dirty_pages_.DumpAndClearInRange(reinterpret_cast<void*>(0x0), ~0x0);
-    ResetPagesToTrackImpl(r);
-    return r;
-  }
+  // GetAndResetCPUWrittenPages returns all pages written
+  // on the CPU since the last time this was called.
+  void ForeachWrittenCPUPageImpl(
+    std::function<void(uintptr_t, uintptr_t)>);
 
-  // Returns a vector of dirty pages addresses that overlaps a memory range
-  // specified with |start| and |size|.
-  std::vector<void*> GetDirtyPagesInRangeImpl(void* start, size_t size) {
-    void* start_page_aligned = GetAlignedAddress(start, page_size_);
-    size_t size_page_aligned = GetAlignedSize(start, size, page_size_);
-    return dirty_pages_.DumpAndClearInRange(start_page_aligned,
-                                            size_page_aligned);
-  }
+  void ResetCPUReadPagesImpl();
 
-  // Sets the access permission flag of a given vector of |pages| back to
-  // readonly or not-accessible if the page overlaps with any tracking ranges.
-  // Returns true if all the page flags are set successfully, otherwise returns
-  // false.
-  bool ResetPagesToTrackImpl(const std::vector<void*>& pages) {
-    bool succeeded = true;
-    std::for_each(pages.begin(), pages.end(), [this, &succeeded](void* p) {
-      if (IsInRanges(reinterpret_cast<uintptr_t>(p), ranges_, true)) {
-        succeeded &= set_protection(p, page_size_,
-                                    track_read_ ? PageProtections::kNone
-                                                : PageProtections::kRead) == 0;
-      }
-    });
-    return succeeded;
-  }
+  bool HandleSegfaultImpl(void* v, PageProtections p);
 
   // Dummy function that we can pass down to the specific memory tracker.
-  bool DoHandleSegfault(void* v) { return HandleSegfault(v); }
-
-  // Returns a vector of dirty pages addresses that overlaps a memory range
-  // specified with |start| and |size|. Then clears all the records of dirty
-  // pages in that range, and resets the pages access permission, if they
-  // overlaps with any tracking ranges, to not-accessible or readonly depends
-  // on whether this memory tracker should track read operations.
-  std::vector<void*> GetAndResetDirtyPagesInRangeImpl(void* start,
-                                                      size_t size) {
-    auto r = GetDirtyPagesInRangeImpl(start, size);
-    ResetPagesToTrackImpl(r);
-    return r;
-  }
-
-  bool track_read_;  // A flag to indicate whether to track read operations on
-                     // the tracking memory ranges.
+  bool DoHandleSegfault(void* v, PageProtections p) { return HandleSegfault(v, p); }
 
   const size_t page_size_;  // Size of a memory page in byte
-  SpinLock l_;              // Spin lock to guard the accesses of shared data
-  std::map<uintptr_t, size_t> ranges_;  // Memory ranges registered for tracking
-  DirtyPageTable dirty_pages_;          // Storage of dirty pages
+  SpinLock lock_;              // Spin lock to guard the accesses of shared data
+  struct range {
+    size_t size;
+    size_t allocatedSize;
+    uintptr_t cpu_address;
+  };
+
+  struct allocation_info {
+    void* gpu_addr;
+    void* read_write_cpu_addr;
+    void* cache_addr;
+  };
+
+  std::map<uintptr_t, range> ranges_;  // Memory ranges registered for tracking
+  std::map<uintptr_t, allocation_info> cpu_alloc_info;  // Map of cpu range to gpu ranges
+
+  DirtyPageTable cpu_written_pages_;    // All cpu_written pages
+  DirtyPageTable cpu_read_pages_;    // All cpu_read pages
+
+  struct page_status {
+      PageProtections prot;
+  };
+
+  std::unordered_map<uintptr_t, page_status> status_;
+
+  // A helper function to tell whether a given address is covered in a bunch of
+  // memory ranges. If |page_aligned_ranges| is set to true, the ranges' address
+  // will be aligned to page boundary, so if the |addr| is not in a range, but
+  // shares a common memory page with the range, it will be considered as in the
+  // range. By default |page_aligned_ranges| is set to false. Returns true if
+  // the address is considered in the range, otherwise returns false.
+  inline bool IsInRanges(uintptr_t addr, std::map<uintptr_t, range>& ranges,
+                        bool page_aligned_ranges = false);
 
  public:
   size_t page_size() const { return page_size_; }
@@ -446,15 +368,11 @@ class MemoryTrackerImpl : public SpecificMemoryTracker {
 #define SIGNAL_SAFE(function)                                                 \
   SignalSafe<MemoryTrackerImpl, decltype(&MemoryTrackerImpl::function##Impl)> \
       function;
-  SIGNAL_SAFE(AddTrackingRange);
-  SIGNAL_SAFE(RemoveTrackingRange);
-  SIGNAL_SAFE(GetDirtyPagesInRange);
-  SIGNAL_SAFE(ResetPagesToTrack);
-  SIGNAL_SAFE(GetAndResetAllDirtyPages);
-  SIGNAL_SAFE(GetAndResetDirtyPagesInRange);
-  SIGNAL_SAFE(ClearTrackingRanges);
   SIGNAL_SAFE(EnableMemoryTracker);
-  SIGNAL_SAFE(DisableMemoryTracker);
+  SIGNAL_SAFE(TrackMappedMemory);
+  SIGNAL_SAFE(UntrackMappedMemory);
+  SIGNAL_SAFE(ForeachWrittenCPUPage);
+  SIGNAL_SAFE(ResetCPUReadPages);
 #undef SIGNAL_SAFE
 
 // SpinLockGuarded wrapped methods that access critical region.
@@ -465,6 +383,55 @@ class MemoryTrackerImpl : public SpecificMemoryTracker {
   LOCKED(HandleSegfault);
 #undef LOCKED
 };
+
+
+
+template <typename SpecificMemoryTracker>
+inline bool MemoryTrackerImpl<SpecificMemoryTracker>::IsInRanges(uintptr_t addr, std::map<uintptr_t, MemoryTrackerImpl<SpecificMemoryTracker>::range>& ranges,
+                       bool page_aligned_ranges) {
+  auto get_aligned_addr = [](uintptr_t addr) {
+    return reinterpret_cast<uintptr_t>(
+        GetAlignedAddress(reinterpret_cast<void*>(addr), GetPageSize()));
+  };
+  auto get_aligned_size = [](uintptr_t addr, size_t size) {
+    return reinterpret_cast<uintptr_t>(
+        GetAlignedSize(reinterpret_cast<void*>(addr), size, GetPageSize()));
+  };
+  // It is not safe to call std::prev() if the container is empty, so the empty
+  // case is handled first.
+  if (ranges.size() == 0) {
+    return false;
+  }
+  auto it = ranges.lower_bound(addr);
+  // Check if the lower bound range already covers the addr.
+  if (it != ranges.end()) {
+    if (it->first == addr) {
+      return true;
+    }
+    if (page_aligned_ranges) {
+      uintptr_t aligned_range_start = get_aligned_addr(it->first);
+      if (aligned_range_start <= addr) {
+        return true;
+      }
+    }
+  }
+  if (it == ranges.begin()) {
+    return false;
+  }
+  // Check the previous range
+  auto pit = std::prev(it, 1);
+  uintptr_t range_start =
+      page_aligned_ranges ? get_aligned_addr(pit->first) : pit->first;
+  uintptr_t range_size = page_aligned_ranges
+                             ? get_aligned_size(pit->first, pit->second.size)
+                             : pit->second.size;
+  if (addr < range_start || addr >= range_start + range_size) {
+    return false;
+  }
+  return true;
+}
+
+
 }  // namespace track_memory
 }  // namespace gapii
 

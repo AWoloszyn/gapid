@@ -320,13 +320,6 @@ void VulkanSpy::serializeGPUBuffers(StateSerializer *serializer) {
   for (auto &mem : mState.DeviceMemories) {
     auto &memory = mem.second;
     serializer->encodeBuffer(memory->mAllocationSize, &memory->mData, nullptr);
-    if (memory->mMappedLocation != nullptr) {
-      if (subIsMemoryCoherent(nullptr, nullptr, memory)) {
-        trackMappedCoherentMemory(
-            nullptr, reinterpret_cast<uint64_t>(memory->mMappedLocation),
-            memory->mMappedSize);
-      }
-    }
   }
 
   for (auto &buffer : mState.Buffers) {

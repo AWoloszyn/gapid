@@ -24,7 +24,6 @@ import (
 	"github.com/google/gapid/gapis/memory"
 	"github.com/google/gapid/gapis/replay"
 	rb "github.com/google/gapid/gapis/replay/builder"
-	"github.com/google/gapid/gapis/replay/protocol"
 	"github.com/google/gapid/gapis/service"
 )
 
@@ -53,12 +52,12 @@ func (e externs) hasDynamicProperty(info VkPipelineDynamicStateCreateInfoᶜᵖ,
 	return false
 }
 
-func (e externs) mapMemory(value Voidᵖᵖ, slice memory.Slice) {
+func (e externs) mapMemory(value Voidᵖ, slice memory.Slice) {
 	ctx := e.ctx
 	if b := e.b; b != nil {
 		switch e.cmd.(type) {
 		case *VkMapMemory:
-			b.Load(protocol.Type_AbsolutePointer, value.value(e.b, e.cmd, e.s))
+			b.Push(value.value(e.b, e.cmd, e.s))
 			b.MapMemory(memory.Range{Base: slice.Base(), Size: slice.Size()})
 		default:
 			log.E(ctx, "mapBuffer extern called for unsupported command: %v", e.cmd)
@@ -171,7 +170,10 @@ func (e externs) unmapMemory(slice memory.Slice) {
 	}
 }
 
-func (e externs) trackMappedCoherentMemory(start uint64, size memory.Size) {}
+func (e externs) trackMappedCoherentMemory(p Voidᵖᵖ, size memory.Size) {}
+
+func (e externs) notifyGPUWrite() {}
+
 func (e externs) readMappedCoherentMemory(memoryHandle VkDeviceMemory, offsetInMapped uint64, readSize memory.Size) {
 	l := e.s.MemoryLayout
 	mem := GetState(e.s).DeviceMemoriesʷ(e.ctx, e.w).Getʷ(e.ctx, e.w, memoryHandle)
@@ -194,7 +196,7 @@ func (e externs) readMappedCoherentMemory(memoryHandle VkDeviceMemory, offsetInM
 		e.w.OnWriteSlice(e.ctx, dstSlice)
 	}
 }
-func (e externs) untrackMappedCoherentMemory(start uint64, size memory.Size) {}
+func (e externs) untrackMappedCoherentMemory(start Voidᵖ, size memory.Size) {}
 
 func (e externs) numberOfPNext(pNext Voidᶜᵖ) uint32 {
 	l := e.s.MemoryLayout
