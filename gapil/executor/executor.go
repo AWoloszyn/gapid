@@ -27,6 +27,7 @@ import (
 
 	"github.com/google/gapid/core/app/status"
 	"github.com/google/gapid/core/os/device"
+	"github.com/google/gapid/core/os/device/host"
 	"github.com/google/gapid/gapil/compiler"
 	"github.com/google/gapid/gapil/compiler/plugins/replay"
 	"github.com/google/gapid/gapil/semantic"
@@ -77,6 +78,12 @@ func NewEnv(ctx context.Context, cfg Config) *Env {
 	ctx = status.Start(ctx, "NewEnv")
 	defer status.Finish(ctx)
 
+	hostABI := host.Instance(context.Background()).Configuration.ABIs[0]
+	if cfg.CaptureABI == nil {
+		cfg.CaptureABI = hostABI
+	}
+	cfg.Execute = true
+
 	obj, existing := cache.LoadOrStore(cfg.key(), &apiExec{ready: make(chan struct{})})
 	ae := obj.(*apiExec)
 	if !existing {
@@ -90,7 +97,7 @@ func NewEnv(ctx context.Context, cfg Config) *Env {
 
 // Compile returns a new and initialized Executor for the given config.
 func Compile(ctx context.Context, cfg Config) *Executor {
-	ctx = status.Start(ctx, "executor.Compile")
+	ctx = status.Start(ctx, "executor.Compile %v", cfg.key())
 	defer status.Finish(ctx)
 
 	apis := cfg.APIs

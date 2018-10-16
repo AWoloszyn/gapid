@@ -174,7 +174,7 @@ func (b *EnvBuilder) Build(ctx context.Context) *executor.Env {
 	env.State.Allocator = b.allocator
 
 	if b.initState && b.c.InitialState != nil {
-		ctx = status.Start(ctx, "BuildInitialCommands")
+		ctx = status.Start(ctx, "Setup Initial State")
 		defer status.Finish(ctx)
 
 		ctx = executor.PutEnv(ctx, env)
