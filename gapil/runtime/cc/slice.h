@@ -85,22 +85,26 @@ class Slice {
 
   // Returns a reference to a single element in the slice.
   // Care must be taken to not mutate data in the application pool.
-  inline T& operator[](uint64_t index) const;
+  inline T& operator[](uint64_t index);
 
   // Copies count elements starting at start into the dst Slice starting at
   // dstStart.
   inline void copy(const Slice<T>& dst, uint64_t start, uint64_t count,
-                   uint64_t dstStart) const;
+                   uint64_t dstStart);
 
   // Casts this slice to a slice of type U.
   // The return slice length will be calculated so that the returned slice
   // length is no longer (in bytes) than this slice.
   template <typename U>
-  inline Slice<U> as() const;
-
+  inline Slice<U> as();
+/*
   // Support for range-based for looping
   inline T* begin() const;
   inline T* end() const;
+*/
+  // Support for range-based for looping
+  inline T* begin();
+  inline T* end();
 
  private:
   void init(pool_t* pool, uint64_t root, uint64_t base, uint64_t size,

@@ -14,7 +14,7 @@
 
 load("//tools/build:rules.bzl", "cc_copts", "cc_stripped_binary")
 
-cc_stripped_binary(
+cc_binary(
     name = "device-info",
     srcs = ["main.cpp"],
     copts = cc_copts(),

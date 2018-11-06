@@ -1,0 +1,317 @@
+{{/*
+ * Copyright (C) 2017 Google Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */}}
+
+{{/* ---- Includes ---- */}}
+{{Include "replay_common.tmpl"}}
+
+{{/* ---- Overrides ---- */}}
+
+{{$filename := print (Global "API") "_replay_types.h" }}
+{{$ | Macro "Types" | Reflow 4 | Write $filename}}
+
+{{define "Types"}}
+  {{AssertType $ "API"}}
+  {{Template "C++.Copyright"}}
+  {{$guard := print "REPLAY_" (Upper (Global "API")) "_TYPES_H"}}
+¶
+  #ifndef {{$guard}}
+  #define {{$guard}}
+¶
+  #include <array>
+  #include <functional>
+  #include <memory>
+  #include <string>
+  #include <unordered_map>
+  #include <vector>
+¶
+  #include <stdint.h>
+  #include <string.h>
+
+  #include "gapil/runtime/cc/runtime.h"
+  #include "gapil/runtime/cc/slice.inc"
+  #include "gapil/runtime/cc/string.h"
+
+  #include "cmd/read_pack_cpp/helpers.h"
+¶
+  namespace gapii {«
+¶
+  {{range $c := $.Classes}}
+    {{Template "ForwardDeclareType" $c}}
+  {{end}}
+¶
+  {{range $e := $.Enums}}
+    {{Template "DeclareType" $e}}
+  {{end}}
+  {{range $p := $.Pseudonyms}}
+    {{Template "DeclareType" $p}}
+    {{Template "DeclareRemap" $p}}
+  {{end}}
+  {{range $m := $.Maps}}
+    {{Template "DeclareType" $m}}
+  {{end}}
+  {{range $c := $.Classes}}
+    {{Template "DeclareType" $c}}
+  {{end}}
+  {{Template "DeclareState" $}}
+
+  »} // namespace gapii
+  #endif // {{$guard}}
+¶
+{{end}}
+
+
+{{/*
+-------------------------------------------------------------------------------
+  Emits C++ type forward declaration for specified AST type
+-------------------------------------------------------------------------------
+*/}}
+{{define "ForwardDeclareType"}}
+  {{if not (IsBuiltin $)}}
+    {{if IsClass $}}class {{Template "C++.Type" $}};¶{{end}}
+    {{Template "DeclareRemap" $}}
+  {{end}}
+{{end}}
+
+
+{{/*
+-------------------------------------------------------------------------------
+  Emits the C++ type declaration specified AST type if it hasn't already been
+  declared.
+-------------------------------------------------------------------------------
+*/}}
+{{define "DeclareType"}}
+  {{if not (IsBuiltin $)}}
+    {{$key  := printf "ApiType%vDeclared" $.Name}}
+    {{if not (Global $key)}}
+      {{Global $key "true"}}
+      {{     if IsClass       $}}{{Template "DeclareClass"     $}}
+      {{else if IsEnum        $}}{{Template "DeclareEnum"      $}}
+      {{else if IsMap         $}}{{Template "DeclareMap"       $}}
+      {{else if IsPseudonym   $}}{{Template "DeclarePseudonym" $}}
+      {{else if IsPointer     $}}{{Template "DeclareType"      $.To}}
+      {{else if IsReference   $}}{{Template "DeclareType"      $.To}}
+      {{else if IsStaticArray $}}{{Template "DeclareType"      $.ValueType}}
+      {{else if IsSlice       $}}
+      {{else}}{{Error "DeclareType does not support type '%T'" $}}
+      {{end}}
+¶
+    {{if GetAnnotation $ "abi_type"}}{{Global "uses_abi_types" 1}}{{end}}
+    {{end}}
+  {{end}}
+{{end}}
+
+
+{{/*
+-------------------------------------------------------------------------------
+  Emits the declarations for all non-declared field types of the class followed
+  by the class declaration.
+-------------------------------------------------------------------------------
+*/}}
+{{define "DeclareClass"}}
+  {{AssertType $ "Class"}}
+  {{/* TODO: Remove this once closure support is in the API language */}}
+  {{$is_cmd_buffer := (eq $.Name "CommandBufferObject")}}
+  {{$is_queue := (eq $.Name "QueueObject")}}
+  {{range $f := $.Fields}}
+    {{Template "DeclareType" (TypeOf $f)}}
+  {{end}}
+
+  {{$serializable := not (GetAnnotation $ "noserialize")}}
+  {{$name := Macro "C++.Type" $}}
+  class {{$name}} {
+    «public:»
+     {{if len $.Fields}}
+      {{$name}}();
+      {{$name}}(§»
+        {{range $i, $f := $.Fields}}
+          {{if $i}}, §{{end}}
+          {{if (IsStaticArray (TypeOf $f))}}const §{{end}}
+          {{Template "C++.Type" $f}}§
+        {{end}}
+        «);
+    {{end}}
+¶
+    {{range $f := $.Fields}}
+      {{Template "C++.Type" $f}} m{{$f.Name}};
+    {{end}}
+  };
+  {{Template "DefineRemap" $}}
+
+¶
+{{end}}
+
+
+{{/*
+-------------------------------------------------------------------------------
+  Emits the declaration for the API state.
+-------------------------------------------------------------------------------
+*/}}
+{{define "DeclareState"}}
+  {{AssertType $ "API"}}
+
+  {{range $g := $.Globals}}
+    {{Template "DeclareType" (TypeOf $g)}}
+  {{end}}
+
+  {{$name := print (Title (Global "API")) "State"}}
+
+  class {{$name}} {
+    «public:»
+    {{$name}}();
+    {{range $g := $.Globals}}
+      {{Template "C++.Type" $g}} {{$g.Name}};
+    {{end}}
+  };
+{{end}}
+
+
+{{/*
+-------------------------------------------------------------------------------
+  Emits enum entry declarations as a number of uint32_t constants.
+-------------------------------------------------------------------------------
+*/}}
+{{define "DeclareEnumEntries"}}
+  {{AssertType $ "Enum"}}
+
+  {{range $entry := $.Entries}}
+    static const {{Template "C++.Type" $.NumberType}} {{Template "C++.EnumEntryName" $entry}} = {{$entry.Value}};
+  {{end}}
+{{end}}
+
+
+{{/*
+-------------------------------------------------------------------------------
+  Emits enum helper methods
+-------------------------------------------------------------------------------
+*/}}
+{{define "DeclareEnumMethods"}}
+  {{AssertType $ "Enum"}}
+{{end}}
+
+
+{{/*
+-------------------------------------------------------------------------------
+  Emits an enum declaration as a number of integer constants in a namespace.
+-------------------------------------------------------------------------------
+*/}}
+{{define "DeclareEnum"}}
+  {{AssertType $ "Enum"}}
+
+  namespace {{Template "C++.EnumName" $}} {
+    {{Template "DeclareEnumEntries" $}}
+    {{Template "DeclareEnumMethods" $}}
+  }
+{{end}}
+
+
+{{/*
+-------------------------------------------------------------------------------
+  Emits the declaration of the pseudonym's target type (if it is not already
+  declared) followed by the pseudonym's typedef declaration.
+-------------------------------------------------------------------------------
+*/}}
+{{define "DeclarePseudonym"}}
+  {{AssertType $ "Pseudonym"}}
+
+  {{Template "DeclareType" $.To}}
+
+  typedef {{Template "C++.Type" $.To}} {{Template "C++.Type" $}};
+{{end}}
+
+
+{{/*
+-------------------------------------------------------------------------------
+  Emits the declaration of the map's key and value types (if it is not already
+  declared) followed by the map's declaration as a gapil::Map.
+-------------------------------------------------------------------------------
+*/}}
+{{define "DeclareMap"}}
+  {{AssertType $ "Map"}}
+
+  {{Template "DeclareType" $.KeyType}}
+  {{Template "DeclareType" $.ValueType}}
+
+  typedef std::unordered_map<{{Template "C++.Type" $.KeyType}}, {{Template "C++.Type" $.ValueType}}> {{Template "C++.Type" $}};
+{{end}}
+
+{{define "DeclareRemap"}}
+  {{$name := Macro "C++.Type" $}}
+
+ gapil::Slice<{{$name}}> remap(gapil::Slice<{{$name}}> _x);
+ {{$name}} remap(gapil::Slice<{{$name}}> _x, size_t offs);
+{{end}}
+
+{{/*
+--------
+*/}}
+{{define "DefineRemap"}}
+
+  {{$name := Macro "C++.Type" $}}
+
+  gapil::Slice<{{$name}}> remap(gapil::Slice<{{$name}}> _x) {
+    if(_x.is_app_pool()) {
+      for (size_t i = 0; i < _x.size(); ++i) {
+      {{range $f := $.Fields}}
+        {{if IsPointer ($f.Type | Underlying)}}
+          fixup_pointer((void**)(&_x[i].m{{$f}}));
+        {{else if IsClass ($f.Type | Underlying)}}
+          {
+            auto s = get_slice(&_x[i].m{{$f}});
+            remap(s);        }
+        {{else}}
+          do_remap(_x[i].m{{$f}});
+        {{end}}
+      {{end}}
+      }
+    }
+    return _x;
+  }
+
+  {{$name}} remap(gapil::Slice<{{$name}}> _x, size_t offs) {
+    return remap(gapil::Slice<{{$name}}>(&_x[offs], 1))[0];
+  }
+{{end}}
+
+
+
+{{/*
+-------------------------------------------------------------------------------
+  Emits a type declaration for the specified command.
+-------------------------------------------------------------------------------
+*/}}
+{{define "DeclareCommand"}}
+  {{AssertType $ "Function"}}
+  {{$name := $.Name}}
+  {{if not (GetAnnotation $ "pfn")}}
+¶
+    struct {{$name}} {
+      void* encode(void* encoder, bool is_group) const;
+¶
+      uint64_t thread;¶
+      {{range $p := $.CallParameters}}
+        {{$ty := TypeOf $p | Underlying}}
+        {{Template "C++.Type" $p}} {{$p.Name}};
+      {{end}}
+    };
+    {{if not (IsVoid $.Return.Type)}}¶
+      struct {{$name}}Call {
+        void* encode(void* encoder, bool is_group) const;
+¶
+        {{Template "C++.Type" $.Return.Type}} result;
+      };
+    {{end}}
+  {{end}}
+{{end}}

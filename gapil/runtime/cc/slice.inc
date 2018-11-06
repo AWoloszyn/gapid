@@ -178,13 +178,13 @@ Slice<T> Slice<T>::operator()(uint64_t start, uint64_t end) const {
 }
 
 template <typename T>
-T& Slice<T>::operator[](uint64_t index) const {
+T& Slice<T>::operator[](uint64_t index) {
     GAPID_ASSERT_MSG(index < count(), "slice index out of bounds");
     return begin()[index];
 }
 
 template <typename T>
-void Slice<T>::copy(const Slice<T>& dst, uint64_t start, uint64_t count, uint64_t dstStart) const {
+void Slice<T>::copy(const Slice<T>& dst, uint64_t start, uint64_t count, uint64_t dstStart)  {
     if (count == 0) {
         return;
     }
@@ -195,7 +195,7 @@ void Slice<T>::copy(const Slice<T>& dst, uint64_t start, uint64_t count, uint64_
 
 template <typename T>
 template <typename U>
-Slice<U> Slice<T>::as() const {
+Slice<U> Slice<T>::as() {
     auto count = data.size / sizeof(U);
     return Slice<U>(/* pool */  data.pool,
                     /* root */  data.root,
@@ -203,7 +203,7 @@ Slice<U> Slice<T>::as() const {
                     /* size */  count * sizeof(U),
                     /* count */ count);
 }
-
+/*
 template <typename T>
 T* Slice<T>::begin() const {
     uint64_t pool_base = 0;
@@ -216,7 +216,23 @@ T* Slice<T>::begin() const {
 template <typename T>
 T* Slice<T>::end() const {
     return begin() + count();
+}*/
+
+
+template <typename T>
+T* Slice<T>::begin() {
+    uint64_t pool_base = 0;
+    if (data.pool != nullptr) {
+        pool_base = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(data.pool->buffer));
+    }
+    return reinterpret_cast<T*>(pool_base + data.base);
 }
+
+template <typename T>
+T* Slice<T>::end() {
+    return begin() + count();
+}
+
 
 template <typename T>
 void Slice<T>::release() {

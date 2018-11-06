@@ -143,6 +143,48 @@ api_template(
 )
 
 api_template(
+    name = "replay_types.h",
+    includes = [":templates"],
+    outputs = ["{api}_replay_types.h"],
+    template = "replay_types.h.tmpl",
+)
+
+api_template(
+    name = "replay_types.cpp",
+    includes = [":templates"],
+    outputs = ["{api}_replay_types.cpp"],
+    template = "replay_types.cpp.tmpl",
+)
+
+api_template(
+    name = "replay_mutate.cpp",
+    includes = [":templates"],
+    outputs = [
+        "{api}_replay_mutate.cpp",
+        "{api}_replay_subroutines.cpp",
+    ],
+    template = "replay_mutate.cpp.tmpl",
+)
+
+api_template(
+    name = "replay_mutate.h",
+    includes = [":templates"],
+    outputs = [
+        "{api}_replay_mutate.h",
+        "{api}_replay_subroutines.h",
+    ],
+    template = "replay_mutate.h.tmpl",
+)
+
+
+api_template(
+    name = "replay_imports.h",
+    includes = [":templates"],
+    outputs = ["{api}_replay_imports.h"],
+    template = "replay_imports.h.tmpl",
+)
+
+api_template(
     name = "api_types.cpp",
     includes = [":templates"],
     outputs = ["{api}_types.cpp"],

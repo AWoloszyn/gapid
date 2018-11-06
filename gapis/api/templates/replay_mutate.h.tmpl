@@ -16,64 +16,42 @@
 
 {{/* ---- Includes ---- */}}
 {{Include "api_classnames.tmpl"}}
-{{Include "cpp_common.tmpl"    }}
-
-{{/* ---- Overrides ---- */}}
-{{Global "C++.StringTypeOverride" "gapil::String"}}
-{{Global "C++.ArenaOverride"      "arena()"}}
+{{Include "replay_common.tmpl"    }}
 {{Global "C++.Statement.Override" "Statement"}}
 
-{{Global "ApiIndex" $.Index}}
-{{Global "SpyName" (print (Title (Global "API")) "Spy")}}
-{{$ | Macro "SpyCpp"}}
-
-{{define "CommandKey"}}
-{{.Name}}
-{{end}}
-
-{{define "SpyCpp"}}
-  {{AssertType $ "API"}}
-  {{range $i, $part := (Partition (AllCommands $) "CommandKey" 4)}}
-     {{$filename := print (Global "API") "_spy_" $i ".cpp"}}
-     {{$part | Macro "SpyCppPart" | Reflow 4 | Write $filename}}
-  {{end}}
-  {{range $i, $part := (Partition $.Subroutines "CommandKey" 2)}}
-     {{$filename := print (Global "API") "_spy_subroutines_" $i ".cpp"}}
-     {{$part | Macro "Subroutines" | Reflow 4 | Write $filename}}
-  {{end}}
-
-{{end}}
-
+{{$filename := print (Global "API") "_replay_mutate.h"}}
+{{$ | Macro "ReplayCpp" | Reflow 4 | Write $filename}}
+{{$fname := print (Global "API") "_replay_subroutines.h"}}
+{{$ | Macro "ReplayCppSubroutines" | Reflow 4 | Write $fname}}
 
 {{/*
 -------------------------------------------------------------------------------
   Emits all the commands passed in $ into a new C++ file.
 -------------------------------------------------------------------------------
 */}}
-{{define "SpyCppPart"}}
+{{define "ReplayCpp"}}
   {{Template "C++.Copyright"}}
   {{Template "FileHeaders"}}
-  {{$spyname := Global "SpyName"}}
 ¶
   namespace gapii {«
 ¶
-  {{ForEach $ "MethodImplementation" | JoinWith "\n¶"}}
+  {{ForEach (AllCommands $) "MethodDeclaration" | JoinWith "\n\n"}}
   »} // namespace gapii
 {{end}}
-
 
 {{/*
 -------------------------------------------------------------------------------
   Emits all the subroutines for the API.
 -------------------------------------------------------------------------------
 */}}
-{{define "Subroutines"}}
+{{define "ReplayCppSubroutines"}}
   {{Template "C++.Copyright"}}
   {{Template "FileHeaders"}}
 ¶
   namespace gapii {«
 ¶
-  {{ForEach $ "Subroutine" | JoinWith "\n¶"}}
+  {{ForEach $.Subroutines "Subroutine" | JoinWith "\n¶"}}
+  {{ForEach $.Externs "Extern" | JoinWith "\n¶"}}
   »} // namespace gapii
 {{end}}
 
@@ -84,15 +62,11 @@
 */}}
 {{define "FileHeaders"}}
 ¶
-  #include "gapii/cc/abort_exception.h"
-  #include "{{Global "API"}}_imports.h"
-  #include "{{Global "API"}}_types.h"
-¶
-  #include "{{Global "API"}}_spy.h"
+  #include "{{Global "API"}}_replay_types.h"
+  #include "cmd/read_pack_cpp/helpers2.h"
+  #include "gapis/api/{{Global "API"}}/{{Global "API"}}_pb/api.pb.h"
 ¶
   #include "core/cc/log.h"
-¶
-  #include "gapis/api/gfxtrace.pb.h"
 ¶
   #define __STDC_FORMAT_MACROS
   #include <inttypes.h>
@@ -175,7 +149,7 @@
   Emits the method body for the given command.
 -------------------------------------------------------------------------------
 */}}
-{{define "MethodImplementation"}}
+{{define "MethodDeclaration"}}
   {{AssertType $ "Function"}}
   {{if not (GetAnnotation $ "pfn")}}
     {{$name      := Macro "C++.MethodName" $}}
@@ -183,104 +157,7 @@
     {{$synthetic := GetAnnotation $ "synthetic"}}
     {{$retTy     := $.Return.Type}}
 
-    {{Template "C++.ReturnType" $}} {{$spyname}}::{{$name}}({{Macro "C++.CallParameters" $ | Strings "CallObserver* observer" | JoinWith ", "}}) {
-      GAPID_DEBUG({{Template "C++.PrintfCommandCall" $}});
-¶
-      {{if (and (not (GetAnnotation $ "synthetic")) (not (GetAnnotation $ "override")))}}
-        if (§
-        {{if (GetAnnotation $ "indirect")}}
-          {{Template "GetIndirectedFunction" "Annotations" (GetAnnotation $ "indirect").Arguments "Element" ((index $.CallParameters 0).Name) "Function" (Macro "CmdName" $)}}
-        {{else}}
-          mImports.{{$name}} == nullptr
-        {{end}}
-          §) {
-          GAPID_ERROR("Application called unsupported function {{$name}}");
-          return {{if not (IsVoid $retTy)}}{{Template "C++.NullArgument" $retTy}}{{end}};
-        }¶
-      {{end}}
-
-      observer->enter(cmd::{{.Name}}{§
-        observer->getCurrentThread(),
-        {{range $i, $p := $.CallParameters}}
-          {{$ty := TypeOf $p | Underlying}}
-          {{if $i}}, {{end}}§
-          {{if IsStaticArray $ty}}{{Template "C++.Type" $p}}::create({{$p.Name}})
-          {{else}}{{$p.Name}}§
-          {{end}}
-        {{end}}
-      });
-¶
-      {{if not (IsVoid $retTy)}}
-        {{Template "C++.ReturnType" $}} result = {{Template "C++.NullArgument" $retTy}};
-      {{end}}
-
-      bool called = false;
-      auto call = [{{Macro "CallCapture" $}}] {
-        called = true;
-        {{if GetAnnotation $ "frame_start"}}
-          onPreStartOfFrame(observer, {{Global "ApiIndex"}});
-        {{end}}
-        {{if GetAnnotation $ "frame_end"}}
-          onPreEndOfFrame(observer, {{Global "ApiIndex"}});
-        {{end}}
-
-        observer->observePending();
-        if (should_record_timestamps()) {
-          observer->observeTimestamp();
-        }
-
-        {{if (GetAnnotation $ "threadsafe")}}
-        unlock();
-        {{end}}
-        {{/* Perform the call */}}
-        {{if not (GetAnnotation $ "synthetic")}}
-          {{if not (IsVoid $.Return.Type)}}result = §{{end}}
-          {{if (GetAnnotation $ "override")}}
-            SpyOverride_{{Template "CmdName" $}}({{Template "C++.CallArguments" $}});
-          {{else if (GetAnnotation $ "indirect")}}
-            {{Template "GetIndirectedCall" "Annotations" (GetAnnotation $ "indirect").Arguments "Element" ((index $.CallParameters 0).Name) "Function" (Macro "CmdName" $)}}({{Template "C++.CallArguments" $}});
-          {{else}}
-            mImports.{{Template "CmdName" $}}({{Template "C++.CallArguments" $}});
-          {{end}}
-        {{end}}
-        {{if (GetAnnotation $ "threadsafe")}}
-        lock(observer);
-        {{end}}
-¶
-        {{if IsVoid $.Return.Type}}
-          observer->encodeAndDelete(new api::CmdCall);
-        {{else}}
-          observer->encode(cmd::{{.Name}}Call{§
-          {{if IsString $.Return.Type}}gapil::String(arena(), result)
-          {{else                     }}result
-          {{end}}
-          §});
-        {{end}}
-¶
-        onPostFence(observer);
-      };
-¶
-      try {
-        do {
-          {{Template "C++.Block" $.Block}}
-        } while(false);
-      } catch (gapii::AbortException& e) {
-        if (!called) {
-          call(); // abort() was called before the fence.
-        }
-      }
-¶
-      {{if GetAnnotation $ "draw_call"}}onPostDrawCall(observer, {{Global "ApiIndex"}});{{end}}
-
-      observer->observePending();
-      observer->exit();
-
-      {{if GetAnnotation $ "frame_start"}}onPostStartOfFrame();{{end}}
-      {{if GetAnnotation $ "frame_end"}}onPostEndOfFrame();{{end}}
-      {{if not (IsVoid $.Return.Type)}}¶
-        return result;
-      {{end}}
-    }
+    {{Template "C++.ReturnType" $}} __{{$name}}({{Macro "C++.CallParameters" $ | JoinWith ", "}});
   {{end}}
 {{end}}
 
@@ -296,9 +173,9 @@
   {{$args := Macro "C++.CallArguments" $}}
 
   {{if IsVoid $.Return.Type}}
-    {{(Strings "this" "observer" "&called" $args) | JoinWith ", "}}
+    {{(Strings "this" "&called" $args) | JoinWith ", "}}
   {{else}}
-    {{(Strings "this" "observer" "&called" "&result" $args) | JoinWith ", "}}
+    {{(Strings "this" "&called" "&result" $args) | JoinWith ", "}}
   {{end}}
 {{end}}
 
@@ -313,16 +190,24 @@
 
   {{$name      := Macro "C++.MethodName" $}}
   {{$spyname   := Global "SpyName"}}
-  {{$args      := Strings "CallObserver* observer" "const std::function<void()>& call" (Macro "C++.CallParameters" $) | JoinWith ", "}}
+  {{$args      := Strings "const std::function<void()>& call" (Macro "C++.CallParameters" $) | JoinWith ", "}}
 
-  {{Template "C++.SubReturnType" $}} {{$spyname}}::{{$name}}({{$args}}) {
-    {{if (GetAnnotation ($) "spy_disabled")}}
-      // @spy_disabled
-    {{else}}
-      {{Global "CurrentCommand" $}}
-      {{Template "C++.Block" $.Block}}
-    {{end}}
-  }
+  {{Template "C++.SubReturnType" $}} {{$name}}({{$args}});
+{{end}}
+
+{{/*
+-------------------------------------------------------------------------------
+  Emits the method body for the extern.
+-------------------------------------------------------------------------------
+*/}}
+{{define "Extern"}}
+  {{AssertType $ "Function"}}
+
+  {{$name      := Macro "C++.MethodName" $}}
+  {{$spyname   := Global "SpyName"}}
+  {{$args      := Strings (Macro "C++.CallParameters" $) | JoinWith ", "}}
+
+  {{Template "C++.SubReturnType" $}} {{$name}}({{$args}});
 {{end}}
 
 
@@ -350,10 +235,11 @@
 */}}
 {{define "Fence"}}
   {{AssertType $ "Fence"}}
+
   {{if not (IsNil $.Statement)}}
     {{if IsCopy $.Statement}}
       {{/* Apply the fenced-copy read */}}
-      {{Template "C++.Type" $.Statement.Dst}} copy__dst__ = observer->copy({{Template "C++.Read" $.Statement.Dst}}, {{Template "C++.Read" $.Statement.Src}});
+      {{Template "C++.Type" $.Statement.Dst}} copy__dst__ = copy({{Template "C++.Read" $.Statement.Dst}}, {{Template "C++.Read" $.Statement.Src}});
     {{end}}
   {{end}}
 
@@ -362,7 +248,7 @@
   {{/* Perform the fenced statement */}}
   {{if not (IsNil $.Statement)}}
     {{if IsCopy $.Statement}}
-      observer->write(copy__dst__);
+      write(copy__dst__);
     {{else}}
       {{Template "C++.Statement" $.Statement}}
     {{end}}
@@ -398,7 +284,7 @@
   {{else if GetAnnotation ($.Src | TargetField) "spy_disabled"}}
     {{Error "Attempting to copy from a @spy_disabled slice"}}
   {{else if GetAnnotation ($.Dst | TargetField) "spy_disabled"}}
-    observer->read({{Template "C++.Read" $.Src}}); // @spy_disabled
+    //remap({{Template "C++.Read" $.Src}}); // @spy_disabled
   {{else}}
     {{Template "C++.Statement.Default" $}}
   {{end}}
