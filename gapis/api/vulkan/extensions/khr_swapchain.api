@@ -227,6 +227,7 @@ cmd VkResult vkGetSwapchainImagesKHR(
 @indirect("VkDevice")
 @custom
 @threadsafe
+@replay_fixup
 cmd VkResult vkAcquireNextImageKHR(
     VkDevice       device,
     VkSwapchainKHR swapchain,

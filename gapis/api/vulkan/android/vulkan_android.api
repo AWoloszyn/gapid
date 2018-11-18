@@ -45,6 +45,7 @@ class VkAndroidSurfaceCreateInfoKHR {
 @extension("VK_KHR_android_surface")
 @indirect("VkInstance")
 @custom
+@replay_fixup
 cmd VkResult vkCreateAndroidSurfaceKHR(
         VkInstance                              instance,
         const VkAndroidSurfaceCreateInfoKHR*    pCreateInfo,

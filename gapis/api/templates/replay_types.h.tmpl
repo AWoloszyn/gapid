@@ -57,7 +57,8 @@
   {{end}}
   {{range $p := $.Pseudonyms}}
     {{Template "DeclareType" $p}}
-    {{Template "DeclareRemap" $p}}
+    {{Template "DeclareRemapPseudonym" $p}}
+    {{Template "DeclareWrite" $p}}
   {{end}}
   {{range $m := $.Maps}}
     {{Template "DeclareType" $m}}
@@ -148,7 +149,8 @@
       {{Template "C++.Type" $f}} m{{$f.Name}};
     {{end}}
   };
-  {{Template "DefineRemap" $}}
+  {{Template "DeclareRemapDef" $}}
+  {{Template "DeclareWrite" $}}
 
 ¶
 {{end}}
@@ -225,10 +227,15 @@
 */}}
 {{define "DeclarePseudonym"}}
   {{AssertType $ "Pseudonym"}}
+  {{$name := Macro "C++.Type" $}}
 
   {{Template "DeclareType" $.To}}
 
   typedef {{Template "C++.Type" $.To}} {{Template "C++.Type" $}};
+  {{if GetAnnotation $ "replay_remap"}}
+    extern std::unordered_map<{{$name}}, {{$name}}> m{{$name}}Remaps;
+  {{end}}
+
 {{end}}
 
 
@@ -247,6 +254,11 @@
   typedef std::unordered_map<{{Template "C++.Type" $.KeyType}}, {{Template "C++.Type" $.ValueType}}> {{Template "C++.Type" $}};
 {{end}}
 
+{{define "DeclareWrite"}}
+  {{$name := Macro "C++.Type" $}}
+  void write_{{$name}}(gapil::Slice<{{$name}}> _s, size_t offs);
+{{end}}
+
 {{define "DeclareRemap"}}
   {{$name := Macro "C++.Type" $}}
 
@@ -254,38 +266,24 @@
  {{$name}} remap(gapil::Slice<{{$name}}> _x, size_t offs);
 {{end}}
 
-{{/*
---------
-*/}}
-{{define "DefineRemap"}}
-
+{{define "DeclareRemapPseudonym"}}
   {{$name := Macro "C++.Type" $}}
 
-  gapil::Slice<{{$name}}> remap(gapil::Slice<{{$name}}> _x) {
-    if(_x.is_app_pool()) {
-      for (size_t i = 0; i < _x.size(); ++i) {
-      {{range $f := $.Fields}}
-        {{if IsPointer ($f.Type | Underlying)}}
-          fixup_pointer((void**)(&_x[i].m{{$f}}));
-        {{else if IsClass ($f.Type | Underlying)}}
-          {
-            auto s = get_slice(&_x[i].m{{$f}});
-            remap(s);        }
-        {{else}}
-          do_remap(_x[i].m{{$f}});
-        {{end}}
-      {{end}}
-      }
-    }
-    return _x;
-  }
-
-  {{$name}} remap(gapil::Slice<{{$name}}> _x, size_t offs) {
-    return remap(gapil::Slice<{{$name}}>(&_x[offs], 1))[0];
-  }
+ gapil::Slice<{{$name}}> remap_{{$name}}(gapil::Slice<{{$name}}> _x);
+ {{$name}} remap_{{$name}}(gapil::Slice<{{$name}}> _x, size_t offs);
+ void remap_{{$name}}({{$name}}& _x);
 {{end}}
 
 
+{{/*
+--------
+*/}}
+{{define "DeclareRemapDef"}}
+  {{$name := Macro "C++.Type" $}}
+  gapil::Slice<{{$name}}> remap(gapil::Slice<{{$name}}> _x);
+  {{$name}} remap(gapil::Slice<{{$name}}> _x, size_t offs);
+  void remap({{$name}}& _x);
+{{end}}
 
 {{/*
 -------------------------------------------------------------------------------

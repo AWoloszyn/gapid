@@ -18,11 +18,25 @@
 {{Include "api_classnames.tmpl"}}
 {{Include "replay_common.tmpl"    }}
 {{Global "C++.Statement.Override" "Statement"}}
+{{$ | Macro "ReplayAllCpp"}}
 
-{{$filename := print (Global "API") "_replay_mutate.cpp"}}
-{{$ | Macro "ReplayCpp" | Reflow 4 | Write $filename}}
-{{$fname := print (Global "API") "_replay_subroutines.cpp"}}
-{{$ | Macro "ReplayCppSubroutines" | Reflow 4 | Write $fname}}
+{{define "CommandKey"}}
+{{.Name}}
+{{end}}
+
+
+{{define "ReplayAllCpp"}}
+  {{AssertType $ "API"}}
+  {{range $i, $part := (Partition (AllCommands $) "CommandKey" 4)}}
+     {{$filename := print (Global "API") "_replay_mutate_" $i ".cpp"}}
+     {{$part | Macro "ReplayCpp" | Reflow 4 | Write $filename}}
+  {{end}}
+  {{range $i, $part := (Partition $.Subroutines "CommandKey" 2)}}
+     {{$filename := print (Global "API") "_replay_subroutines_" $i ".cpp"}}
+     {{$part | Macro "ReplayCppSubroutines" | Reflow 4 | Write $filename}}
+  {{end}}
+
+{{end}}
 
 {{/*
 -------------------------------------------------------------------------------
@@ -35,7 +49,7 @@
 ¶
   namespace gapii {«
 ¶
-  {{ForEach (AllCommands $) "MethodImplementation" | JoinWith "\n\n"}}
+  {{ForEach $ "MethodImplementation" | JoinWith "\n\n"}}
   »} // namespace gapii
 {{end}}
 
@@ -50,7 +64,7 @@
 ¶
   namespace gapii {«
 ¶
-  {{ForEach $.Subroutines "Subroutine" | JoinWith "\n¶"}}
+  {{ForEach $ "Subroutine" | JoinWith "\n¶"}}
   »} // namespace gapii
 {{end}}
 
@@ -85,7 +99,6 @@
   #pragma GCC diagnostic ignored "-Wunused-lambda-capture"
   #pragma GCC diagnostic ignored "-Wpessimizing-move"
 {{end}}
-
 
 {{/*
 -------------------------------------------------------------------------------
@@ -181,6 +194,8 @@
           {{if not (IsVoid $.Return.Type)}}result = §{{end}}
           {{if (GetAnnotation $ "override")}}
             SpyOverride_{{Template "CmdName" $}}({{Template "C++.CallArguments" $}});
+          {{else if (GetAnnotation $ "replay_fixup")}}
+            ReplayOverride_{{Template "CmdName" $}}({{Template "C++.CallArguments" $}});
           {{else if (GetAnnotation $ "indirect")}}
             {{Template "GetIndirectedCall" "Annotations" (GetAnnotation $ "indirect").Arguments "Element" ((index $.CallParameters 0).Name) "Function" (Macro "CmdName" $)}}({{Template "C++.CallArguments" $}});
           {{else}}

@@ -1,0 +1,127 @@
+{{/*
+ * Copyright (C) 2017 Google Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */}}
+
+{{/* ---- Includes ---- */}}
+{{Include "replay_common.tmpl"}}
+
+{{/* ---- Overrides ---- */}}
+
+{{$filename := print (Global "API") "_replay_api.cpp" }}
+{{$ | Macro "R_API" | Reflow 4 | Write $filename}}
+
+{{define "R_API"}}
+  {{$api := print (Global "API")}}
+  {{AssertType $ "API"}}
+  {{Template "C++.Copyright"}}
+¶
+  #include <stdint.h>
+  #include <string>
+  #include <unordered_map>
+
+  #include "{{$api}}_replay_api.h"
+  #include "{{$api}}_replay_types.h"
+  #include "{{$api}}_replay_mutate.h"
+  #include "gapis/api/{{$api}}/{{$api}}_pb/api.pb.h"
+¶
+  std::unordered_map<size_t, bool(*)(const std::string&)> mFunctions;
+
+  namespace gapii {«
+  void Setup_{{$api}}() {
+    {{ForEach (AllCommands $) "SetupOne" | JoinWith "\n\n"}}
+  }
+  
+
+  {{ForEach (AllCommands $) "Process" | JoinWith "\n\n"}}
+
+  bool Process(const std::string& name, const std::string& data) {
+    size_t nm = std::hash<std::string>()(name);
+    auto it = mFunctions.find(nm);
+    if (it != mFunctions.end()) {
+      return (*(it->second))(data);
+    }
+    return false;
+  }
+
+  »} // namespace gapii
+¶
+{{end}}
+
+{{define "Process"}}
+  {{$api := print (Global "API")}}
+  {{AssertType $ "Function"}}
+  {{if not (GetAnnotation $ "pfn")}}
+    {{$name      := Macro "C++.MethodName" $}}
+    {{$spyname   := Global "SpyName"}}
+    {{$synthetic := GetAnnotation $ "synthetic"}}
+    {{$retTy     := $.Return.Type}}
+
+    bool Process_{{$name}}(const std::string& _data) {
+      {{$api}}::{{$name}} proto;
+      proto.ParseFromString(_data);
+      {{ForEach $.CallParameters "MakeTemp"}}
+      //std::cout << "{{$name}}" << std::endl;
+      __{{$name}}({{ForEach $.CallParameters "ParamName" | JoinWith ", "}});
+      return true;
+    }
+  {{end}}
+{{end}}
+
+{{define "ParamName"}}
+   {{$.Name}}
+{{end}}
+
+{{define "MakeTemp"}}
+   {{$name := $.Name}}
+   {{$type      := Macro "C++.Type" $}}
+   {{if IsStaticArray $.Type}}
+    {{Template "C++.Type" $.Type.ValueType}} {{$name}}[{{$.Type.Size}}];
+    for (size_t i = 0; i < {{$.Type.Size}}; ++i) {
+      {{$name}}[i] = proto.{{(Lower $name)}}(i);
+      {{if IsPointer ($.Type.ValueType | Underlying)}}¶
+        fixup_pointer((&{{$name}}[i]));
+      {{else if IsClass ($.Type.ValueType | Underlying)}}¶
+          remap({{$name}}[i]);
+      {{else if (IsPseudonym $.Type.ValueType)}}
+        remap_{{Template "C++.Type" $.Type.To}}({{$name}}[i]);¶
+      {{end}}
+    }
+   {{else}}
+    {{$type}} {{$name}} = ({{$type}})proto.{{(Lower $name)}}();¶
+    {{if IsPointer ($.Type | Underlying)}}
+      fixup_pointer((&{{$name}}));¶
+    {{else if IsClass ($.Type | Underlying)}}
+        remap({{$name}});¶
+    {{else if (IsPseudonym $.Type)}}
+      remap_{{Template "C++.Type" $.Type}}({{$name}});¶
+    {{end}}
+
+   {{end}}
+{{end}}
+
+{{define "SetupOne"}}
+  {{if not (GetAnnotation $ "pfn")}}
+    {{$name      := Macro "C++.MethodName" $}}
+    {{$api := print (Global "API")}}
+    {{$retTy     := $.Return.Type}}
+     {
+      size_t x = std::hash<std::string>()(std::string("{{$api}}.{{$name}}"));
+      if (mFunctions.find(x) != mFunctions.end()) {
+        std::cerr << "Duplicate function found :( {{$api}}.{{$name}}";
+      }
+      mFunctions[x] = &Process_{{$name}};
+     }
+  {{end}}
+{{end}}

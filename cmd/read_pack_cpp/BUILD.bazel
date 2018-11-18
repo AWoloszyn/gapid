@@ -14,6 +14,15 @@
 
 load("//tools/build:rules.bzl", "cc_copts", "apic_template", "cc_stripped_binary")
 
+apic_template(
+    name = "vk_templated_api",
+    api = "//gapis/api/vulkan:api",
+    templates = [
+        "//gapis/api/templates:replay_api.h",
+        "//gapis/api/templates:replay_api.cpp",
+        "//gapis/api/vulkan/templates:vk_replay_helpers.cpp",
+    ],
+)
 
 apic_template(
     name = "vk_templated",
@@ -42,8 +51,10 @@ cc_stripped_binary(
         "helpers2.h",
         "helpers.cpp",
         "main.cpp",
-    ] + [":vk_templated"],
-    copts = cc_copts(),
+        "extras.cpp",
+    ] + [":vk_templated"] + [":vk_templated_api"],
+    copts = cc_copts() + ["-flto"],
+    linkopts = ["-flto"],
     visibility = ["//visibility:public"],
     deps = [
         "//core/cc",

@@ -89,9 +89,8 @@ class Slice {
 
   // Copies count elements starting at start into the dst Slice starting at
   // dstStart.
-  inline void copy(const Slice<T>& dst, uint64_t start, uint64_t count,
+  inline void copy(Slice<T> dst, uint64_t start, uint64_t count,
                    uint64_t dstStart);
-
   // Casts this slice to a slice of type U.
   // The return slice length will be calculated so that the returned slice
   // length is no longer (in bytes) than this slice.

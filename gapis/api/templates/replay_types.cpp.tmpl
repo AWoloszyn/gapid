@@ -26,11 +26,18 @@
   {{Template "C++.Copyright"}}
 ¶
   #include "cmd/read_pack_cpp/{{Global "API"}}_replay_types.h"
+  #include "cmd/read_pack_cpp/helpers2.h"
 ¶
   namespace gapii {«
   class CallObserver;
   {{range $c := $.Classes}}
     {{Template "DefineClassMethods" $c}}
+    {{Template "DefineRemap" $c}}
+    {{Template "DefineWriteClass" $c}}
+  {{end}}
+  {{range $c := $.Pseudonyms}}
+    {{Template "DefineRemapPseudonym" $c}}
+    {{Template "DefineWrite" $c}}
   {{end}}
   {{range $c := $.Enums}}
     {{Template "DefineEnumMethods" $c}}
@@ -134,4 +141,91 @@
 */}}
 {{define "DeclareCopyInitializer"}}
   m{{$.Name}}({{$.Name}})
+{{end}}
+
+{{define "DefineRemapPseudonym"}}
+  {{$name := Macro "C++.Type" $}}
+  gapil::Slice<{{$name}}> remap_{{$name}}(gapil::Slice<{{$name}}> _x) {
+    if(_x.is_app_pool()) {
+      for (size_t i = 0; i < _x.count(); ++i) {
+        remap_{{$name}}(_x[i]);
+      }
+    }
+    return _x;
+  }
+  void remap_{{$name}}({{$name}}& _x) {
+    {{if (GetAnnotation  $ "replay_remap")}}
+      auto it =  m{{$name}}Remaps.find(_x);
+      if (it != m{{$name}}Remaps.end()) {
+        _x = it->second;
+      }
+    {{end}}
+  }
+
+  {{$name}} remap_{{$name}}(gapil::Slice<{{$name}}> _x, size_t offs) {
+    return remap_{{$name}}(gapil::Slice<{{$name}}>(&_x[offs], 1))[0];
+  }
+{{end}}
+
+{{define "DefineRemap"}}
+  {{$name := Macro "C++.Type" $}}
+
+  gapil::Slice<{{$name}}> remap(gapil::Slice<{{$name}}> _x) {
+    if(_x.is_app_pool()) {
+      for (size_t i = 0; i < _x.count(); ++i) {
+        remap(_x[i]);
+      }
+    }
+    return _x;
+  }
+
+  {{$name}} remap(gapil::Slice<{{$name}}> _x, size_t offs) {
+    return remap(gapil::Slice<{{$name}}>(&_x[offs], 1))[0];
+  }
+  
+  void remap({{$name}}& _x) {
+    {{range $f := $.Fields}}
+      {{if IsPointer ($f.Type | Underlying)}}
+        fixup_pointer((&_x.m{{$f}}));
+      {{else if IsClass ($f.Type | Underlying)}}
+          remap(_x.m{{$f}});
+      {{else if (and (IsPseudonym $f.Type) (GetAnnotation  $f.Type "replay_remap"))}}
+        remap_{{Template "C++.Type" $f.Type}}(_x.m{{$f}});
+      {{end}}
+    {{end}}
+  }
+{{end}}
+
+{{define "DefineWriteClass"}}
+  {{$name := Macro "C++.Type" $}}
+  void write_{{$name}}(gapil::Slice<{{$name}}> _x, size_t offs) {
+    {{range $f := $.Fields}}
+      {{$fType := Macro "C++.Type" $f.Type}}
+      {{if IsClass ($f.Type | Underlying)}}
+          write_{{$fType}}(gapil::Slice<{{$fType}}>(&_x[offs].m{{$f}}, 1), 0);
+      {{else if (and (IsPseudonym $f.Type) (GetAnnotation  $f.Type "replay_remap"))}}
+          write_{{$fType}}(gapil::Slice<{{$fType}}>(&_x[offs].m{{$f}}, 1), 0);
+      {{end}}
+    {{end}}
+  }
+{{end}}
+
+
+{{define "DefineWrite"}}
+  {{$name := Macro "C++.Type" $}}
+  {{if GetAnnotation $ "replay_remap"}}
+  std::unordered_map<{{$name}}, {{$name}}> m{{$name}}Remaps;
+  {{end}}
+  void write_{{$name}}(gapil::Slice<{{$name}}> _x, size_t offs) {
+    {{if GetAnnotation $ "replay_remap"}}
+      auto ptr = &_x[offs];
+      auto val = _x[offs];
+      _pending_writes.push_back(pending_write{
+        (uintptr_t)ptr, 
+        (uintptr_t)sizeof(_x[0]),
+        [ptr, val]() {
+          m{{$name}}Remaps[ptr[0]] = val;
+        }});
+    {{end}}
+  }
 {{end}}

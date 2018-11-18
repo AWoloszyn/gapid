@@ -184,7 +184,7 @@ T& Slice<T>::operator[](uint64_t index) {
 }
 
 template <typename T>
-void Slice<T>::copy(const Slice<T>& dst, uint64_t start, uint64_t count, uint64_t dstStart)  {
+void Slice<T>::copy(Slice<T> dst, uint64_t start, uint64_t count, uint64_t dstStart)  {
     if (count == 0) {
         return;
     }

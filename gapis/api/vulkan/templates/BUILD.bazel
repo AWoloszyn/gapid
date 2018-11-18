@@ -47,3 +47,12 @@ api_template(
     outputs = ["{api}_spy_helpers.cpp"],
     template = "vk_spy_helpers.cpp.tmpl",
 )
+
+api_template(
+    name = "vk_replay_helpers.cpp",
+    includes = [
+        "//gapis/api/templates",
+    ],
+    outputs = ["{api}_replay_helpers.cpp"],
+    template = "vk_replay_helpers.cpp.tmpl",
+)

@@ -132,7 +132,7 @@
   {{else if IsSlice       $}}{{Template "C++.Type" $}}()
   {{else if IsMap         $}}{{Template "C++.Type" $}}()
   {{else if IsPointer     $}}nullptr
-  {{else if IsReference   $}}std::make_shared<{{Template "C++.Type" $.To}}>()
+  {{else if IsReference   $}}nullptr
   {{else}}{{Error "macro Null called with unsupported type: %s" $.Name}}
   {{end}}
 {{end}}
@@ -401,7 +401,7 @@
   {{else if IsMapIteration $}}{{Template "C++.MapIteration" $}}
   {{else if IsCall         $}}{{Template "C++.Call" $}};
   {{else if IsAssert       $}}
-  {{else if IsRead         $}}{{if IsNumericType $.Slice.Type.To}}{{else}}remap{{end}}({{Template "C++.Read" $.Slice}});
+  {{else if IsRead         $}}{{Template "C++.ReadV" $}};
   {{else if IsWrite        $}}{{/* write({{Template "C++.Read" $.Slice}}); */}}
   {{else if IsCopy         $}}copy({{Template "C++.Read" $.Dst}}, {{Template "C++.Read" $.Src}});
   {{else if IsFence        $}}{{if not (IsNil $.Statement)}}{{Template "C++.Statement" $.Statement}}{{end}}
@@ -421,6 +421,18 @@
   {{Template "C++.Type" (TypeOf $.Local)}} {{Template "C++.LocalName" $.Local}} = {{Template "C++.Read" $.Local.Value}};
 {{end}}
 
+{{define "C++.ReadV"}}
+
+  {{if Global "C++.InferredExpression"}}
+  {{else if IsPointer $.Slice.Type.To}}
+    remap_pointer({{Template "C++.Read" $.Slice}})
+  {{else if (or (IsBuiltin $.Slice.Type.To) (IsEnum $.Slice.Type.To))}}
+  {{else if IsPseudonym $.Slice.Type.To}}
+    remap_{{Template "C++.Type" $.Slice.Type.To}}({{Template "C++.Read" $.Slice}})
+  {{else}}
+    remap({{Template "C++.Read" $.Slice}})
+  {{end}}
+{{end}}
 
 {{/*
 -------------------------------------------------------------------------------
@@ -511,8 +523,13 @@
 {{define "C++.SliceAssign"}}
   {{AssertType $ "SliceAssign"}}
 
-  {{if eq $.Operator "="}}write<{{Template "C++.Type" $.To.Type.To}}>({{Template "C++.Read" $.To.Slice}}, {{Template "C++.Read" $.To.Index}}, {{Template "C++.Read" $.Value}});
-  {{else}}{{Error "Unsupported MapAssign operator %s" $.Operator}}{{end}}
+  {{if (or (IsClass $.To.Type.To) (and (IsPseudonym $.To.Type.To) (GetAnnotation $.To.Type.To "replay_remap")))}}
+    {{if eq $.Operator "="}}write_{{Template "C++.Type" $.To.Type.To}}({{Template "C++.Read" $.To.Slice}}, {{Template "C++.Read" $.To.Index}});
+     {{else}}{{Error "Unsupported MapAssign operator %s" $.Operator}}{{end}}
+  {{else}}
+    {{if eq $.Operator "="}}write<{{Template "C++.Type" $.To.Type.To}}>({{Template "C++.Read" $.To.Slice}}, {{Template "C++.Read" $.To.Index}});
+     {{else}}{{Error "Unsupported MapAssign operator %s" $.Operator}}{{end}}
+  {{end}}
 {{end}}
 
 
@@ -605,7 +622,7 @@
 {{define "C++.Read"}}
   {{     if IsBoolValue        $}}{{$}}
   {{else if IsNumericValue     $}}{{Template "C++.NumericValue" $}}
-  {{else if IsStringValue      $}}std::string({{printf "%q" $}})
+  {{else if IsStringValue      $}}make_string({{printf "%q" $}})
   {{else if IsMessageValue     $}}"{{$.AST.Name.Value}}"
   {{else if IsParameter        $}}{{Template "C++.ReadParameter" $}}
   {{else if IsBinaryOp         $}}({{Template "C++.Read" $.LHS}}) {{$.Operator}} ({{Template "C++.Read" $.RHS}})
@@ -633,7 +650,7 @@
   {{else if IsSliceIndex       $}}{{Template "C++.SliceIndex" $}}
   {{else if IsSliceRange       $}}make_slice({{Template "C++.Read" $.Slice}}, {{Template "C++.Read" $.Range.LHS}}, {{Template "C++.Read" $.Range.RHS}})
   {{else if IsPointerRange     $}}make_slice({{Template "C++.Read" $.Pointer}}, {{Template "C++.Read" $.Range.LHS}}, {{Template "C++.Read" $.Range.RHS}})
-  {{else if IsClone            $}}clone({{Template "C++.Read" $.Slice}})
+  {{else if IsClone            $}}{{if IsBuiltin $.Slice.Type.To}}clone_builtin({{Template "C++.Read" $.Slice}}){{else}}clone({{Template "C++.Read" $.Slice}}){{end}}
   {{else if IsMake             $}}make<{{Template "C++.Type" ($.Type | Unpack).To}}>({{Template "C++.Read" $.Size}})
   {{else if IsSelect           $}}{{Template "C++.Select" $}}
   {{else if IsField            $}}m{{$.Name}}
@@ -653,7 +670,7 @@
   {{AssertType $ "Parameter"}}
 
   {{$ty := TypeOf $}}
-  {{if IsString $ty}}std::string({{$.Name}})
+  {{if IsString $ty}}make_string({{$.Name}})
   {{else           }}{{$.Name}}
   {{end}}
 {{end}}
@@ -824,9 +841,9 @@
   {{/* T[] -> T* */}}{{else if and (IsSlice $src_ty) (IsPointer $dst_ty)}}
     {{$src}}.begin()
   {{/* char* -> string */}}{{else if and (IsPointer $src_ty) (IsString $dst_ty)}}
-    std::string({{$src}})
+    make_string({{$src}})
   {{/* char[] -> string */}}{{else if and (IsSlice $src_ty) (IsString $dst_ty)}}
-    std::string({{$src}})
+    make_string({{$src}})
   {{/* string -> char[] */}}{{else if and (IsString $src_ty) (IsSlice $dst_ty)}}
     make_slice({{$src}})
   {{else}}
@@ -887,6 +904,10 @@
     {{Template "C++.Read" $.Slice}}[{{Template "C++.Read" $.Index}}]
   {{else if IsPointer $.Slice.Type.To}}
     remap_pointer({{Template "C++.Read" $.Slice}}, {{Template "C++.Read" $.Index}})
+  {{else if (or (IsBuiltin $.Slice.Type.To) (IsEnum $.Slice.Type.To))}}
+    {{Template "C++.Read" $.Slice}}[{{Template "C++.Read" $.Index}}]
+  {{else if IsPseudonym $.Slice.Type.To}}
+    remap_{{Template "C++.Type" $.Slice.Type.To}}({{Template "C++.Read" $.Slice}}, {{Template "C++.Read" $.Index}})
   {{else}}
     remap({{Template "C++.Read" $.Slice}}, {{Template "C++.Read" $.Index}})
   {{end}}

@@ -1,0 +1,177 @@
+{{/*
+ * Copyright (C) 2017 Google Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */}}
+
+{{/* ---- Includes ---- */}}
+{{Include "../../templates/replay_common.tmpl"}}
+
+{{$filename := print (Global "API") "_replay_helpers.cpp" }}
+{{$ | Macro "Exports" | Reflow 4 | Write $filename}}
+
+{{define "Exports"}}
+  {{AssertType $ "API"}}
+
+{{Template "C++.Copyright"}}
+#include "cmd/read_pack_cpp/{{Global "API"}}_replay_subroutines.h"
+#include "cmd/read_pack_cpp/{{Global "API"}}_replay_types.h"
+#include "cmd/read_pack_cpp/{{Global "API"}}_replay_imports.h"
+  
+gapii::VulkanImports::PFNVKGETINSTANCEPROCADDR get_instance_proc_addr = nullptr;
+
+#include <Windows.h>
+#include <sstream>
+#include "core/cc/dl_loader.h"
+
+std::string systemVulkanPath() {
+  char sysdir[MAX_PATH];
+  GetSystemDirectoryA(sysdir, MAX_PATH - 1);
+
+  std::stringstream path;
+  path << sysdir << "\\vulkan-1.dll";
+  return path.str();
+}
+
+
+namespace gapii {
+uint32_t SpyOverride_vkCreateInstance(
+        VkInstanceCreateInfo*  pCreateInfo,
+        VkAllocationCallbacks* pAllocator,
+        VkInstance*                  pInstance) {
+    static core::DlLoader libVulkan(systemVulkanPath().c_str());
+    if (get_instance_proc_addr == nullptr) {
+        get_instance_proc_addr = reinterpret_cast<gapii::VulkanImports::PFNVKGETINSTANCEPROCADDR>(libVulkan.lookup("vkGetInstanceProcAddr"));
+    }
+    pCreateInfo->mpNext = nullptr;
+    // From that get the next vkCreateInstance function.
+    gapii::VulkanImports::PFNVKCREATEINSTANCE create_instance = reinterpret_cast<gapii::VulkanImports::PFNVKCREATEINSTANCE>(
+        get_instance_proc_addr(0, "vkCreateInstance"));
+
+    mImports.pfn_vkCreateInstance = create_instance;
+    mImports.pfn_vkEnumerateInstanceExtensionProperties \
+        = reinterpret_cast<gapii::VulkanImports::PFNVKENUMERATEINSTANCEEXTENSIONPROPERTIES>(get_instance_proc_addr(0, "vkEnumerateInstanceExtensionProperties"));
+
+    if (create_instance == NULL) {
+        return VkResult::VK_ERROR_INITIALIZATION_FAILED;
+    }
+
+    // Actually call vkCreateInstance, and keep track of the result.
+    uint32_t result = create_instance(pCreateInfo, pAllocator, pInstance);
+
+    // If it failed, then we don't need to track this instance.
+    if (result != VkResult::VK_SUCCESS) return result;
+
+    mImports.vkEnumerateInstanceExtensionProperties =
+        reinterpret_cast<VulkanImports::PFNVKENUMERATEINSTANCEEXTENSIONPROPERTIES>(get_instance_proc_addr(*pInstance, "vkEnumerateInstanceExtensionProperties"));
+    GAPID_DEBUG("Registering instance functions for %p", pInstance);
+
+    // Add this instance, along with the vkGetInstanceProcAddr to our
+    // map. This way when someone calls vkGetInstanceProcAddr, we can forward
+    // it to the correct "next" vkGetInstanceProcAddr.
+    {
+        // The same instance was returned twice, this is a problem.
+        auto insert_pt = mImports.mVkInstanceFunctions.insert({*pInstance, {}});
+        if (!insert_pt.second) {
+            // TODO(awoloszyn): Figure out if this is valid. Can an implementation return the same
+            // instance for all calls to vkCreateInstance.
+            return VkResult::VK_ERROR_INITIALIZATION_FAILED;
+        }
+        {{range $c := AllCommands $}}
+            {{if (Macro "IsIndirected" "Command" $c "IndirectOn" "VkInstance")}}
+                {{$name := Macro "CmdName" $c}}
+                insert_pt.first->second.{{$name}} = reinterpret_cast<gapii::VulkanImports::{{Template "C++.FunctionPtrType" $c}}>(get_instance_proc_addr(*pInstance, "{{$name}}"));
+            {{end}}
+        {{end}}
+    }
+    return result;
+}
+
+uint32_t SpyOverride_vkCreateDevice(
+        VkPhysicalDevice             physicalDevice,
+        VkDeviceCreateInfo*    pCreateInfo,
+        VkAllocationCallbacks* pAllocator,
+        VkDevice*                    pDevice) {
+
+    gapii::VulkanImports::PFNVKCREATEDEVICE create_device = reinterpret_cast<gapii::VulkanImports::PFNVKCREATEDEVICE>(
+        get_instance_proc_addr(mState.PhysicalDevices[physicalDevice]->mInstance, "vkCreateDevice"));
+
+    if (!create_device) {
+      return VkResult::VK_ERROR_INITIALIZATION_FAILED;
+    }
+
+    //// Prepare the enabled extension list for the next layer's vkCreateDevice
+    auto enumerate_dev_exts = reinterpret_cast<gapii::VulkanImports::PFNVKENUMERATEDEVICEEXTENSIONPROPERTIES>(
+        mImports.mVkInstanceFunctions[mState.PhysicalDevices[physicalDevice]->mInstance].vkEnumerateDeviceExtensionProperties);
+    uint32_t extension_count = 0;
+    uint32_t enumerate_extension_result;
+    enumerate_extension_result = enumerate_dev_exts(physicalDevice, nullptr, &extension_count, nullptr);
+    if (enumerate_extension_result != VkResult::VK_SUCCESS) {
+      return VkResult::VK_ERROR_INITIALIZATION_FAILED;
+    }
+    std::vector<VkExtensionProperties> ext_properties;
+    ext_properties.reserve(extension_count);
+    enumerate_extension_result = enumerate_dev_exts(physicalDevice, nullptr, &extension_count, ext_properties.data());
+    if (enumerate_extension_result != VkResult::VK_SUCCESS) {
+      return VkResult::VK_ERROR_INITIALIZATION_FAILED;
+    }
+    std::vector<char*> extension_names;
+    for(uint32_t i = 0; i < pCreateInfo->menabledExtensionCount; i++) {
+      if (strcmp(pCreateInfo->mppEnabledExtensionNames[i], "VK_EXT_debug_marker")) {
+        extension_names.push_back(pCreateInfo->mppEnabledExtensionNames[i]);
+      }
+    }
+    VkDeviceCreateInfo override_create_info = *pCreateInfo;
+    override_create_info.mppEnabledExtensionNames = extension_names.data();
+    override_create_info.menabledExtensionCount = extension_names.size();
+    override_create_info.mpNext = nullptr;
+    // Actually make the call to vkCreateDevice.
+    uint32_t result = create_device(physicalDevice, &override_create_info, pAllocator, pDevice);
+
+    // If we failed, then we don't store the associated pointers.
+    if (result != VkResult::VK_SUCCESS) {
+      return result;
+    }
+
+    VkDevice device = *pDevice;
+    (void)device; // Use is conditional of preprocessor defines.
+    VulkanImports::VkDeviceFunctions* functions = nullptr;
+    (void)functions;
+
+    gapii::VulkanImports::PFNVKGETDEVICEPROCADDR get_device_proc_addr = 
+        reinterpret_cast<gapii::VulkanImports::PFNVKGETDEVICEPROCADDR>(
+        get_instance_proc_addr(mState.PhysicalDevices[physicalDevice]->mInstance, "vkGetDeviceProcAddr"));
+
+
+
+    // Add this device, along with the vkGetDeviceProcAddr to our map.
+    // This way when someone calls vkGetDeviceProcAddr, we can forward
+    // it to the correct "next" vkGetDeviceProcAddr.
+    {
+        auto insert_pt = mImports.mVkDeviceFunctions.insert({*pDevice, {}});
+        functions = &insert_pt.first->second;
+        if (!insert_pt.second) {
+            return VkResult::VK_ERROR_INITIALIZATION_FAILED;
+        }
+        {{range $c := AllCommands $}}
+            {{if (Macro "IsIndirected" "Command" $c "IndirectOn" "VkDevice")}}
+                {{$name := Macro "CmdName" $c}}
+                insert_pt.first->second.{{$name}} = reinterpret_cast<gapii::VulkanImports::{{Template "C++.FunctionPtrType" $c}}>(get_device_proc_addr(*pDevice, "{{$name}}"));
+            {{end}}
+        {{end}}
+    }
+
+    return result;
+}
+}
+{{end}}

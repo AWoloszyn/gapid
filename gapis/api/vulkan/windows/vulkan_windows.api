@@ -39,6 +39,7 @@ class VkWin32SurfaceCreateInfoKHR {
 @extension("VK_KHR_win32_surface")
 @indirect("VkInstance")
 @custom
+@replay_fixup
 cmd VkResult vkCreateWin32SurfaceKHR(
         VkInstance                              instance,
         const VkWin32SurfaceCreateInfoKHR*      pCreateInfo,

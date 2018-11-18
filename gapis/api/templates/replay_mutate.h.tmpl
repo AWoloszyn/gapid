@@ -158,6 +158,12 @@
     {{$retTy     := $.Return.Type}}
 
     {{Template "C++.ReturnType" $}} __{{$name}}({{Macro "C++.CallParameters" $ | JoinWith ", "}});
+    {{if (GetAnnotation $ "override")}}
+      {{Template "C++.ReturnType" $}} SpyOverride_{{$name}}({{Macro "C++.CallParameters" $ | JoinWith ", "}});
+    {{end}}
+    {{if (GetAnnotation $ "replay_fixup")}}
+      {{Template "C++.ReturnType" $}} ReplayOverride_{{$name}}({{Macro "C++.CallParameters" $ | JoinWith ", "}});
+    {{end}}
   {{end}}
 {{end}}
 

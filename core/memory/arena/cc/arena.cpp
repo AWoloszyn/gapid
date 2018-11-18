@@ -33,6 +33,9 @@
 #include <unistd.h>  // getpagesize
 #elif TARGET_OS == GAPID_OS_WINDOWS
 #define WIN32_LEAN_AND_MEAN
+#ifdef _MSC_VER
+#define NOMINMAX
+#endif
 #include <windows.h>
 #undef WIN32_LEAN_AND_MEAN
 #endif
@@ -55,11 +58,27 @@ static const uintptr_t kChunkMask = ~(static_cast<uintptr_t>(kChunkSize) - 1);
 
 static_assert(sizeof(core::chunk_header) <= kMinBlockSize,
               "Cannot fit the chunk header inside a single block");
+#ifdef _MSC_VER
+uint32_t __inline clz( uint32_t value )
+{
+    DWORD leading_zero = 0;
 
+    if ( _BitScanReverse( &leading_zero, value ) )
+    {
+       return 31 - leading_zero;
+    }
+    else
+    {
+         // Same remarks as above
+         return 32;
+    }
+}
 // Returns the exponent of the next power of 2 larger than
 // val
+uint32_t next_power_of_2(uint32_t val) { return (33 - clz(val - 1)); }
+#else
 uint32_t next_power_of_2(uint32_t val) { return (33 - __builtin_clz(val - 1)); }
-
+#endif
 // round_up_to rounds the given value to the next multiple.
 // This is invalid if multiple is 0.
 uint32_t round_up_to(uint32_t val, uint32_t multiple) {

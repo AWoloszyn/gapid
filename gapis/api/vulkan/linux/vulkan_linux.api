@@ -50,6 +50,7 @@ class VkXlibSurfaceCreateInfoKHR {
 @extension("VK_KHR_xlib_surface")
 @indirect("VkInstance")
 @custom
+@replay_fixup
 cmd VkResult vkCreateXlibSurfaceKHR(
     VkInstance                        instance,
     const VkXlibSurfaceCreateInfoKHR* pCreateInfo,
@@ -107,6 +108,7 @@ class VkXcbSurfaceCreateInfoKHR {
 @extension("VK_KHR_xcb_surface")
 @indirect("VkInstance")
 @custom
+@replay_fixup
 cmd VkResult vkCreateXcbSurfaceKHR(
     VkInstance                       instance,
     const VkXcbSurfaceCreateInfoKHR* pCreateInfo,
@@ -163,6 +165,7 @@ class VkWaylandSurfaceCreateInfoKHR {
 @extension("VK_KHR_wayland_surface")
 @indirect("VkInstance")
 @custom
+@replay_fixup
 cmd VkResult vkCreateWaylandSurfaceKHR(
     VkInstance                           instance,
     const VkWaylandSurfaceCreateInfoKHR* pCreateInfo,
@@ -218,6 +221,7 @@ class VkMirSurfaceCreateInfoKHR {
 @extension("VK_KHR_mir_surface")
 @indirect("VkInstance")
 @custom
+@replay_fixup
 cmd VkResult vkCreateMirSurfaceKHR(
     VkInstance                       instance,
     const VkMirSurfaceCreateInfoKHR* pCreateInfo,

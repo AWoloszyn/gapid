@@ -20,15 +20,20 @@
 #include "gapil/runtime/cc/runtime.h"
 #include "gapil/runtime/cc/slice.inc"
 #include "gapil/runtime/cc/string.h"
-#include "cmd/read_pack_cpp/vulkan_replay_types.h"
+#include "core/cc/interval_list.h"
+
+#include <map>
+
+extern std::map<uintptr_t, std::pair<void*, uintptr_t>> _remapped_ranges;
+extern std::map<void*, uintptr_t> _remapped_ranges_rev;
 
 template<typename T>
-void do_remap(T& t) {
-
+T do_remap(T& t) {
+  return t;
 }
 
 template<typename T>
-void write(gapil::Slice<T>, uint64_t, T&) {}
+void write(gapil::Slice<T>, uint64_t) {}
 
 template<typename T>
 gapil::Slice<T> make(uint64_t _x) {
@@ -36,15 +41,11 @@ gapil::Slice<T> make(uint64_t _x) {
     return gapil::Slice<T>(nullptr, _x);
 }
 
-template<typename T>
-gapil::Slice<T>& clone(const gapil::Slice<T> src) {
- auto dst = make<T>(src.count());
-  // Make sure that we actually fill the data the first time.
-  // If we use ::copy(), then the copy will only happen if
-  // the observer is active.
-  remap(src);
-  src.copy(dst, 0, src.count(), 0);
-  return dst;
+std::string inline make_string(const char* str) {
+  if (str == nullptr) {
+    return std::string();
+  }
+  return std::string(str);
 }
 
 template<typename T>
@@ -58,12 +59,76 @@ gapil::Slice<T> get_slice(T* _t) {
 }
 
 template<typename T>
+T* fixup_pointer(T** _v, std::map<uintptr_t, std::pair<void*, uintptr_t>>* _map) {
+  if (*_v == nullptr) return nullptr;
+  void* ptr = *_v;
+
+  auto it = _map->upper_bound((uintptr_t)*_v);
+  if (it == _map->begin()) {
+    return nullptr;
+  }
+  if (it == _map->end()) {
+    auto& r = _map->rbegin();
+    auto diff = (char*)ptr - (char*)r->first;
+    if (diff > r->second.second) {
+      return nullptr;
+    }
+
+    *_v = (T*)(((char*)r->second.first) + diff);
+    return *_v;
+  }
+  --it;
+
+  auto diff = (char*)ptr - (char*)it->first;
+  if (diff > it->second.second) {
+    return nullptr;
+  }
+  *_v = (T*)(((char*)it->second.first) + diff);
+  return *_v;
+}
+
+template<typename T>
+T* fixup_pointer(T** _v) {
+  if (fixup_pointer(_v, &_mapped_ranges)) {
+    return *_v;
+  }
+  if (fixup_pointer(_v, &_remapped_ranges)) {
+    return *_v;
+  }
+  return *_v;
+}
+
+template<typename T>
 T* remap_pointer(gapil::Slice<T*> _x, size_t count) {
-    fixup_pointer(_x[count]);
+    fixup_pointer((void**)&_x[count]);
     return _x[count];
 }
 
-void* fixup_pointer(void** _v) {return *_v;}
+template<typename T>
+gapil::Slice<T*> remap_pointer(gapil::Slice<T*> _x) {
+    for (size_t i = 0; i < _x.count(); ++i) {
+        fixup_pointer((void**)&_x[i]);
+    }
+    return _x;
+}
 
+template<typename T>
+gapil::Slice<T> clone(gapil::Slice<T> src) {
+    auto dst = make<T>(src.count());
+    // Make sure that we actually fill the data the first time.
+    // If we use ::copy(), then the copy will only happen if
+    // the observer is active.
+    remap(src);
+    src.copy(dst, 0, src.count(), 0);
+    return dst;
+}
+
+
+template<typename T>
+gapil::Slice<T> clone_builtin(gapil::Slice<T> src) {
+    auto dst = make<T>(src.count());
+    //src.copy(dst, 0, src.count(), 0);
+    return dst;
+}
 
 #endif // READ_PACK_CPP_HELPERS_H__
