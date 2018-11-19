@@ -25,8 +25,11 @@
 #include "cmd/read_pack_cpp/stb_image.h"
 #include "cmd/read_pack_cpp/stb_image_write.h"
 
+typedef gapii::PFN_vkVoidFunction (VULKAN_API_PTR *pfn_get_instance_proc_addr)(gapii::VkInstance instance, const char* pName);
+typedef gapii::PFN_vkVoidFunction (VULKAN_API_PTR *pfn_get_device_proc_addr)(gapii::VkDevice device, const char* pName);
+extern pfn_get_instance_proc_addr get_instance_proc_addr;
+
 std::map<uintptr_t, std::pair<void*, uintptr_t>> _mapped_ranges;
-extern gapii::VulkanImports::PFNVKGETINSTANCEPROCADDR get_instance_proc_addr;
 
 namespace gapii {
 
@@ -225,7 +228,7 @@ void SpyOverride_vkCmdDebugMarkerInsertEXT(uint64_t, VkDebugMarkerMarkerInfoEXT 
     auto width = r->mInfo.mExtent.mWidth;
     auto height = r->mInfo.mExtent.mHeight;
     static size_t framenum = 0;
-    if (framenum++ % 100 == 0) {
+    if (framenum++ % 10 == 0) {
       std::string nm = "frame" + std::to_string(framenum) + ".png";
       for (size_t i = 0; i < sz / 4; ++i) {
         _d[4 * i] ^= _d[4 * i + 2];
@@ -252,8 +255,8 @@ void SpyOverride_vkCmdDebugMarkerInsertEXT(uint64_t, VkDebugMarkerMarkerInfoEXT 
       device, pCreateInfo, pAllocator, pImage);
     auto physicalDevice = mState.Devices[device]->mPhysicalDevice;
 
-    gapii::VulkanImports::PFNVKGETDEVICEPROCADDR get_device_proc_addr =
-      reinterpret_cast<gapii::VulkanImports::PFNVKGETDEVICEPROCADDR>(
+    pfn_get_device_proc_addr get_device_proc_addr =
+      reinterpret_cast<pfn_get_device_proc_addr>(
         get_instance_proc_addr(mState.PhysicalDevices[physicalDevice]->mInstance, "vkGetDeviceProcAddr"));
 
     decltype(&vkSetSwapchainCallback) cb = (decltype(&vkSetSwapchainCallback))get_device_proc_addr(device, "vkSetSwapchainCallback");
@@ -317,7 +320,7 @@ uint32_t ReplayOverride_vkEnumeratePhysicalDevices(VkInstance instance, uint32_t
   auto key_size = props.phydevtoproperties().keys_size();
   std::vector<uint64_t> device_ids;
   std::vector<uint64_t> vendor_ids;
-  for (size_t i = 0; i < key_size; ++i) {
+  for (size_t i = 0; i < (size_t)key_size; ++i) {
     auto& pdp = props.phydevtoproperties().values(i);
     device_ids.push_back(pdp.deviceid());
     vendor_ids.push_back(pdp.vendorid());

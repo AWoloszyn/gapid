@@ -27,13 +27,19 @@
 #include "cmd/read_pack_cpp/{{Global "API"}}_replay_subroutines.h"
 #include "cmd/read_pack_cpp/{{Global "API"}}_replay_types.h"
 #include "cmd/read_pack_cpp/{{Global "API"}}_replay_imports.h"
-  
-gapii::VulkanImports::PFNVKGETINSTANCEPROCADDR get_instance_proc_addr = nullptr;
 
-#include <Windows.h>
+
+typedef gapii::PFN_vkVoidFunction (VULKAN_API_PTR *pfn_get_instance_proc_addr)(gapii::VkInstance instance, const char* pName);
+typedef gapii::PFN_vkVoidFunction (VULKAN_API_PTR *pfn_get_device_proc_addr)(gapii::VkDevice device, const char* pName);
+pfn_get_instance_proc_addr get_instance_proc_addr = nullptr;
+
+
+
 #include <sstream>
 #include "core/cc/dl_loader.h"
 
+#if TARGET_OS == GAPID_OS_WINDOWS
+#include <Windows.h>
 std::string systemVulkanPath() {
   char sysdir[MAX_PATH];
   GetSystemDirectoryA(sysdir, MAX_PATH - 1);
@@ -42,6 +48,13 @@ std::string systemVulkanPath() {
   path << sysdir << "\\vulkan-1.dll";
   return path.str();
 }
+#else
+std::string systemVulkanPath() {
+  std::stringstream path;
+  path << "libvulkan.so";
+  return path.str();
+}
+#endif
 
 
 namespace gapii {
@@ -51,7 +64,7 @@ uint32_t SpyOverride_vkCreateInstance(
         VkInstance*                  pInstance) {
     static core::DlLoader libVulkan(systemVulkanPath().c_str());
     if (get_instance_proc_addr == nullptr) {
-        get_instance_proc_addr = reinterpret_cast<gapii::VulkanImports::PFNVKGETINSTANCEPROCADDR>(libVulkan.lookup("vkGetInstanceProcAddr"));
+    	get_instance_proc_addr = reinterpret_cast<pfn_get_instance_proc_addr>(libVulkan.lookup("vkGetInstanceProcAddr"));
     }
     pCreateInfo->mpNext = nullptr;
     // From that get the next vkCreateInstance function.
@@ -148,8 +161,8 @@ uint32_t SpyOverride_vkCreateDevice(
     VulkanImports::VkDeviceFunctions* functions = nullptr;
     (void)functions;
 
-    gapii::VulkanImports::PFNVKGETDEVICEPROCADDR get_device_proc_addr = 
-        reinterpret_cast<gapii::VulkanImports::PFNVKGETDEVICEPROCADDR>(
+    pfn_get_device_proc_addr get_device_proc_addr = 
+        reinterpret_cast<pfn_get_device_proc_addr>(
         get_instance_proc_addr(mState.PhysicalDevices[physicalDevice]->mInstance, "vkGetDeviceProcAddr"));
 
 

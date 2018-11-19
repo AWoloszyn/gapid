@@ -28,7 +28,6 @@ extern std::ifstream* _stream;
 extern std::function<void()> _reset_stream;
 extern std::unordered_map<int64_t, std::string> _types;
 extern std::unordered_map<int64_t, std::pair<int64_t, int64_t>> _resources;
-extern std::map<uintptr_t, std::pair<void*, uintptr_t>> _mapped_ranges;
 extern core::IntervalList<uintptr_t> _all_ranges;
 
 

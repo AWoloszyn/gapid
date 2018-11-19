@@ -31,10 +31,6 @@ struct destroyer {
   std::function<void(void)> destroy;
 };
 
-static void set_dispatch_from_parent(void* child, void* parent) {
-  *((const void**)child) = *((const void**)parent);
-}
-
 
 void walkImageSubRng(
     std::shared_ptr<ImageObject> img, VkImageSubresourceRange rng,

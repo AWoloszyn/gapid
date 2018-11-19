@@ -158,7 +158,14 @@ bool read_type(int64_t size, std::ifstream* _stream) {
   return true;
 }
 
+uint64_t file_size = 0;
+uint64_t log_num = 0;
+
 bool read_chunk(std::ifstream* _stream) {
+  if ((uint64_t)_stream->tellg() > log_num * (file_size / 50)) {
+    std::cout << "Preprocessed " << log_num * 2 << "%" << std::endl;
+    log_num++;
+  }
   int64_t sz = read_zigzag32(_stream);
   if (sz >= 0) {
     // This is an object
@@ -179,6 +186,11 @@ std::function<void()> _reset_stream;
 int main(int argc, char const *argv[]) {
   _all_ranges.setMergeThreshold(1024*1024*16);
   std::ifstream capture(argv[argc-1], std::ios::in | std::ios::binary);
+  capture.seekg(0, capture.end);
+  file_size = capture.tellg();
+  capture.seekg(0, capture.beg);
+   
+
   read_header(&capture);
   uint64_t header_offs = capture.tellg();
 
@@ -200,7 +212,6 @@ int main(int argc, char const *argv[]) {
   for (auto& x: _all_ranges) {
     rangeSize += x.mEnd - x.mStart;
     _remapped_ranges[x.mStart] = std::make_pair(malloc(x.mEnd - x.mStart), x.mEnd - x.mStart);
-    _remapped_ranges_rev[_remapped_ranges[x.mStart].first] = x.mStart;
     std::cout << "Range: " << x.mStart << ":" << x.mEnd << "->" << _remapped_ranges[x.mStart].first << std::endl;
   }
   _stream = &capture;
@@ -237,7 +248,7 @@ void write_resource(void* p, size_t res_id, std::ifstream* _stream) {
 
 
   capture::Resource res;
-  auto a = res.ParseFromString(s);
+  res.ParseFromString(s);
   memcpy(p, res.data().c_str(), res.data().size());
   // Read resource here
 }

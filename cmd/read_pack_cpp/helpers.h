@@ -25,6 +25,7 @@
 #include <map>
 
 extern std::map<uintptr_t, std::pair<void*, uintptr_t>> _remapped_ranges;
+extern std::map<uintptr_t, std::pair<void*, uintptr_t>> _mapped_ranges;
 extern std::map<void*, uintptr_t> _remapped_ranges_rev;
 
 template<typename T>
@@ -68,8 +69,8 @@ T* fixup_pointer(T** _v, std::map<uintptr_t, std::pair<void*, uintptr_t>>* _map)
     return nullptr;
   }
   if (it == _map->end()) {
-    auto& r = _map->rbegin();
-    auto diff = (char*)ptr - (char*)r->first;
+    auto r = _map->rbegin();
+    uintptr_t diff = (char*)ptr - (char*)r->first;
     if (diff > r->second.second) {
       return nullptr;
     }
@@ -79,7 +80,7 @@ T* fixup_pointer(T** _v, std::map<uintptr_t, std::pair<void*, uintptr_t>>* _map)
   }
   --it;
 
-  auto diff = (char*)ptr - (char*)it->first;
+  uintptr_t diff = (char*)ptr - (char*)it->first;
   if (diff > it->second.second) {
     return nullptr;
   }

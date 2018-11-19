@@ -40,24 +40,6 @@ inline int32_t read_zz32(std::ifstream* _stream) {
 }
 
 bool get_next_write_to(void* pos, std::vector<uint8_t>& _fill) {
-
-  // This is the mapped pointer, so we have to work backwards
-  auto it = _remapped_ranges_rev.upper_bound(pos);
-  if (it == _remapped_ranges_rev.end()) {
-    it = _remapped_ranges_rev.begin();
-    // Ugly hack for now.
-    for (size_t i = 0; i < _remapped_ranges_rev.size() - 1; ++i) {
-      it++;
-    }
-  }
-  else {
-    --it;
-  }
-
-  uintptr_t offset = (char*)pos - (char*)it->first;
-  uintptr_t base = it->second + offset;
-
-  
   auto old_pos = _stream->tellg();
   while(_stream->good()) {
     int64_t sz = read_zz32(_stream);
@@ -81,7 +63,10 @@ bool get_next_write_to(void* pos, std::vector<uint8_t>& _fill) {
 
             memory::Observation obs;
             obs.ParseFromString(d);
-            if (obs.base() < base && obs.base() + obs.size() > base + _fill.size()) {
+            void* b = (void*)obs.base();
+            fixup_pointer(&b);
+
+            if (b <= pos && (char*)b + obs.size() >= (char*)pos + _fill.size()) {
                 // Get our resource
                 auto new_pos = _resources[obs.res_index()];
                 _stream->seekg(new_pos.first);
@@ -91,9 +76,9 @@ bool get_next_write_to(void* pos, std::vector<uint8_t>& _fill) {
                 _stream->seekg(old_pos);
 
                 capture::Resource res;
-                auto a = res.ParseFromString(s);
+                res.ParseFromString(s);
                 //This is our observation
-                uint64_t base_offs = base - obs.base();
+                uint64_t base_offs = (char*)pos - (char*)b;
                 memcpy(_fill.data(), res.data().c_str() + base_offs, _fill.size());
                 return true;
             }
