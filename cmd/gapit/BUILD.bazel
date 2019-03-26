@@ -20,6 +20,7 @@ go_library(
     srcs = [
         "benchmark.go",
         "commands.go",
+        "commands_to_trace.go",
         "common.go",
         "create_graph_visualization.go",
         "devices.go",
