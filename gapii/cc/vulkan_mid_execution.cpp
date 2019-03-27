@@ -435,16 +435,11 @@ void VulkanSpy::serializeGPUBuffers(StateSerializer *serializer) {
 
     auto get_element_size = [this](uint32_t format, uint32_t aspect_bit,
                                    bool in_buffer) -> uint32_t {
-      switch (aspect_bit) {
-        case VkImageAspectFlagBits::VK_IMAGE_ASPECT_COLOR_BIT:
-          return subGetElementAndTexelBlockSize(nullptr, nullptr, format)
-              .mElementSize;
-        case VkImageAspectFlagBits::VK_IMAGE_ASPECT_DEPTH_BIT:
-          return subGetDepthElementSize(nullptr, nullptr, format, in_buffer);
-        case VkImageAspectFlagBits::VK_IMAGE_ASPECT_STENCIL_BIT:
-          return 1;
+      if (VkImageAspectFlagBits::VK_IMAGE_ASPECT_STENCIL_BIT == aspect_bit) {
+        return subGetDepthElementSize(nullptr, nullptr, format, in_buffer);
       }
-      return 0;
+      return subGetElementAndTexelBlockSizeForAspect(nullptr, nullptr, format, aspect_bit)
+              .mElementSize;
     };
 
     auto next_multiple_of_8 = [](size_t value) -> size_t {
@@ -470,16 +465,18 @@ void VulkanSpy::serializeGPUBuffers(StateSerializer *serializer) {
       const bool has_linear_layout =
           (lev->mLinearLayout != nullptr) && (lev->mLinearLayout->msize != 0);
       auto elementAndTexelBlockSize =
-          subGetElementAndTexelBlockSize(nullptr, nullptr, info.mFormat);
+          subGetElementAndTexelBlockSizeForAspect(nullptr, nullptr, info.mFormat, aspect_bit);
+      auto divisor = subGetAspectSizeDivisor(nullptr, nullptr, info.mFormat, aspect_bit);
+
       const uint32_t texel_width =
           elementAndTexelBlockSize.mTexelBlockSize.mWidth;
       const uint32_t texel_height =
           elementAndTexelBlockSize.mTexelBlockSize.mHeight;
 
       const uint32_t width =
-          subGetMipSize(nullptr, nullptr, info.mExtent.mWidth, level);
+          subGetMipSize(nullptr, nullptr, info.mExtent.mWidth, level) / divisor.mWidth;
       const uint32_t height =
-          subGetMipSize(nullptr, nullptr, info.mExtent.mHeight, level);
+          subGetMipSize(nullptr, nullptr, info.mExtent.mHeight, level) / divisor.mHeight;
       const uint32_t width_in_blocks =
           subRoundUpTo(nullptr, nullptr, width, texel_width);
       const uint32_t height_in_blocks =
@@ -507,16 +504,17 @@ void VulkanSpy::serializeGPUBuffers(StateSerializer *serializer) {
                             const VkExtent3D &extent, uint32_t format,
                             uint32_t aspect_bit) -> pitch {
       auto elementAndTexelBlockSize =
-          subGetElementAndTexelBlockSize(nullptr, nullptr, format);
+          subGetElementAndTexelBlockSizeForAspect(nullptr, nullptr, format, aspect_bit);
+      auto divisor = subGetAspectSizeDivisor(nullptr, nullptr, format, aspect_bit);
       const uint32_t texel_width =
           elementAndTexelBlockSize.mTexelBlockSize.mWidth;
       const uint32_t texel_height =
           elementAndTexelBlockSize.mTexelBlockSize.mHeight;
 
       const uint32_t width_in_blocks =
-          subRoundUpTo(nullptr, nullptr, extent.mWidth, texel_width);
+          subRoundUpTo(nullptr, nullptr, extent.mWidth, texel_width) / divisor.mWidth;
       const uint32_t height_in_blocks =
-          subRoundUpTo(nullptr, nullptr, extent.mHeight, texel_height);
+          subRoundUpTo(nullptr, nullptr, extent.mHeight, texel_height) / divisor.mHeight;
       const uint32_t element_size = get_element_size(format, aspect_bit, false);
 
       return pitch{
@@ -544,15 +542,16 @@ void VulkanSpy::serializeGPUBuffers(StateSerializer *serializer) {
                           uint32_t aspect_bit) -> byte_size_and_extent {
       auto elementAndTexelBlockSize =
           subGetElementAndTexelBlockSize(nullptr, nullptr, format);
+      auto divisor = subGetAspectSizeDivisor(nullptr, nullptr, format, aspect_bit);
 
       const uint32_t texel_width =
           elementAndTexelBlockSize.mTexelBlockSize.mWidth;
       const uint32_t texel_height =
           elementAndTexelBlockSize.mTexelBlockSize.mHeight;
       const uint32_t width =
-          subGetMipSize(nullptr, nullptr, extent.mWidth, mip_level);
+          subGetMipSize(nullptr, nullptr, extent.mWidth, mip_level) / divisor.mWidth;
       const uint32_t height =
-          subGetMipSize(nullptr, nullptr, extent.mHeight, mip_level);
+          subGetMipSize(nullptr, nullptr, extent.mHeight, mip_level) / divisor.mHeight;
       const uint32_t depth =
           subGetMipSize(nullptr, nullptr, extent.mDepth, mip_level);
       const uint32_t width_in_blocks =
