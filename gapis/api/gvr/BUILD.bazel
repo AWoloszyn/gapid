@@ -100,9 +100,9 @@ go_library(
         "//gapis/resolve:go_default_library",
         "//gapis/resolve/cmdgrouper:go_default_library",
         "//gapis/service:go_default_library",
-        "//gapis/service/memory_box:go_default_library", #keep
+        "//gapis/service/memory_box:go_default_library",  #keep
         "//gapis/service/path:go_default_library",
-        "//gapis/service/types:go_default_library",
+        "//gapis/service/types:go_default_library",  #keep
         "//gapis/stringtable:go_default_library",  # keep
     ],
 )

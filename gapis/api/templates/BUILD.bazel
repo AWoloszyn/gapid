@@ -24,38 +24,41 @@ filegroup(
 filegroup(
     name = "go_common_deps",
     srcs = [
-        "go_common.tmpl",
         "common.tmpl",
-    ]
+        "go_common.tmpl",
+    ],
 )
 
 filegroup(
     name = "go_convert_common_deps",
     srcs = [
-        ":go_common_deps",
         "go_convert_common.tmpl",
-    ]
+        ":go_common_deps",
+    ],
 )
 
 filegroup(
     name = "cpp_common_deps",
     srcs = [
-        "cpp_common.tmpl",
         "common.tmpl",
-    ]
+        "cpp_common.tmpl",
+    ],
 )
 
 filegroup(
     name = "gfxapi_common_deps",
     srcs = [
-        ":cpp_common_deps",
         "gfx_api_common.tmpl",
-    ]
+        ":cpp_common_deps",
+    ],
 )
 
 api_template(
     name = "api",
-    includes = [":go_common_deps", "c_common.tmpl"],
+    includes = [
+        "c_common.tmpl",
+        ":go_common_deps",
+    ],
     outputs = [
         "api.go",
         "api_amrp.go",
@@ -116,7 +119,10 @@ api_template(
 
 api_template(
     name = "state_serialize",
-    includes = [":go_common_deps", ":go_convert_common_deps"],
+    includes = [
+        ":go_common_deps",
+        ":go_convert_common_deps",
+    ],
     outputs = ["state_serialize.go"],
     template = "state_serialize.go.tmpl",
 )
@@ -130,7 +136,10 @@ api_template(
 
 api_template(
     name = "convert",
-    includes = [":go_common_deps", ":go_convert_common_deps"],
+    includes = [
+        ":go_common_deps",
+        ":go_convert_common_deps",
+    ],
     outputs = ["convert.go"],
     template = "convert.go.tmpl",
 )
@@ -151,7 +160,10 @@ api_template(
 
 api_template(
     name = "specific_gfx_api.h",
-    includes = [":cpp_common_deps", ":gfxapi_common_deps"],
+    includes = [
+        ":cpp_common_deps",
+        ":gfxapi_common_deps",
+    ],
     outputs = ["{api}_gfx_api.h"],
     template = "specific_gfx_api.h.tmpl",
 )
@@ -165,21 +177,30 @@ api_template(
 
 api_template(
     name = "api_imports.h",
-    includes = [":cpp_common_deps", "api_classnames.tmpl"],
+    includes = [
+        "api_classnames.tmpl",
+        ":cpp_common_deps",
+    ],
     outputs = ["{api}_imports.h"],
     template = "api_imports.h.tmpl",
 )
 
 api_template(
     name = "api_spy.h",
-    includes = [":cpp_common_deps", "api_classnames.tmpl"],
+    includes = [
+        "api_classnames.tmpl",
+        ":cpp_common_deps",
+    ],
     outputs = ["{api}_spy.h"],
     template = "api_spy.h.tmpl",
 )
 
 api_template(
     name = "api_spy.cpp",
-    includes = [":cpp_common_deps", "api_classnames.tmpl"],
+    includes = [
+        "api_classnames.tmpl",
+        ":cpp_common_deps",
+    ],
     outputs = [
         "{api}_spy_0.cpp",
         "{api}_spy_1.cpp",
@@ -207,28 +228,40 @@ api_template(
 
 api_template(
     name = "opengl32_exports.def",
-    includes = [":cpp_common_deps", "opengl32_exports.tmpl"],
+    includes = [
+        "opengl32_exports.tmpl",
+        ":cpp_common_deps",
+    ],
     outputs = ["opengl32_exports.def"],
     template = "opengl32_exports.def.tmpl",
 )
 
 api_template(
     name = "opengl32_resolve.cpp",
-    includes = [":cpp_common_deps", "opengl32_exports.tmpl"],
+    includes = [
+        "opengl32_exports.tmpl",
+        ":cpp_common_deps",
+    ],
     outputs = ["opengl32_resolve.cpp"],
     template = "opengl32_resolve.cpp.tmpl",
 )
 
 api_template(
     name = "opengl32_x64.asm",
-    includes = [":cpp_common_deps", "opengl32_exports.tmpl"],
+    includes = [
+        "opengl32_exports.tmpl",
+        ":cpp_common_deps",
+    ],
     outputs = ["opengl32_x64.asm"],
     template = "opengl32_x64.asm.tmpl",
 )
 
 api_template(
     name = "opengl_framework_exports.cpp",
-    includes = [":cpp_common_deps", "opengl_framework_exports.tmpl"],
+    includes = [
+        "opengl_framework_exports.tmpl",
+        ":cpp_common_deps",
+    ],
     outputs = ["opengl_framework_exports.cpp"],
     template = "opengl_framework_exports.cpp.tmpl",
 )
