@@ -115,6 +115,8 @@ message Value {
     box.Value box = 50;
 
     types.Type type = 60;
+
+    memory_box.Value memory_box = 70;
   }
 }
 

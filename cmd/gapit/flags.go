@@ -210,6 +210,7 @@ type (
 		IncludeNoContextGroups bool   `help:"_Include no context groups"`
 		AllowIncompleteFrame   bool   `help:"_Make a group for incomplete frames"`
 		Observations           ObservationFlags
+		Pointees               bool `help:"_Show the values of pointees"`
 		CommandFilterFlags
 		CaptureFileFlags
 	}

@@ -39,7 +39,9 @@ import (
 	"github.com/google/gapid/gapis/client"
 	"github.com/google/gapid/gapis/memory"
 	"github.com/google/gapid/gapis/service"
+	"github.com/google/gapid/gapis/service/memory_box"
 	"github.com/google/gapid/gapis/service/path"
+	"github.com/google/gapid/gapis/service/types"
 )
 
 func (f CommandFilterFlags) commandFilter(ctx context.Context, client service.Service, p *path.Capture) (*path.CommandFilter, error) {
@@ -384,11 +386,21 @@ func getConstantSet(ctx context.Context, client service.Service, p *path.Constan
 	return out, nil
 }
 
-func printCommand(ctx context.Context, client service.Service, p *path.Command, c *api.Command, of ObservationFlags) error {
+var typeCache = map[uint64]*types.Type{}
+
+func printCommand(ctx context.Context, client service.Service, p *path.Command, c *api.Command, of ObservationFlags, showPointees bool) error {
 	indices := make([]string, len(p.Indices))
 	for i, v := range p.Indices {
 		indices[i] = fmt.Sprintf("%d", v)
 	}
+
+	type val struct {
+		p uint64
+		t *path.Type
+		n string
+	}
+
+	vals := []val{}
 
 	params := make([]string, len(c.Parameters))
 	for i, p := range c.Parameters {
@@ -401,6 +413,24 @@ func printCommand(ctx context.Context, client service.Service, p *path.Command, 
 			v = constants.Sprint(v)
 		}
 		params[i] = fmt.Sprintf("%v: %v", p.Name, v)
+
+		if showPointees {
+			var t *types.Type
+			if tp, ok := typeCache[p.Type.TypeIndex]; ok {
+				t = tp
+			} else {
+				tp, err := client.Get(ctx, p.Type.Path(), nil)
+				if err != nil {
+					return err
+				}
+				t = tp.(*types.Type)
+				typeCache[p.Type.TypeIndex] = t
+			}
+			if _, ok := t.Ty.(*types.Type_Pointer); ok {
+				vals = append(vals, val{v.(uint64), p.Type, p.Name})
+			}
+		}
+
 	}
 	fmt.Printf("%v %v(%v)", indices, c.Name, strings.Join(params, ", "))
 	if c.Result != nil {
@@ -416,6 +446,23 @@ func printCommand(ctx context.Context, client service.Service, p *path.Command, 
 	}
 
 	fmt.Fprintln(os.Stdout, "")
+
+	for _, ptr := range vals {
+		v, err := client.Get(ctx,
+			(&path.MemoryAsType{
+				Address: ptr.p,
+				Pool:    0,
+				After:   p,
+				Type:    ptr.t,
+				Offset:  0,
+			}).Path(), nil)
+		if err != nil {
+			fmt.Fprintf(os.Stdout, "*%s: err %+v \n", ptr.n, err)
+		} else {
+			vv := v.(*memory_box.Value)
+			fmt.Fprintf(os.Stdout, "*%s: %+v \n", ptr.n, vv)
+		}
+	}
 
 	if of.Ranges || of.Data {
 		mp := p.MemoryAfter(0, 0, math.MaxUint64)
@@ -458,12 +505,12 @@ func printMemoryData(ctx context.Context, client service.Service, p *path.Comman
 	return nil
 }
 
-func getAndPrintCommand(ctx context.Context, client service.Service, p *path.Command, of ObservationFlags) error {
+func getAndPrintCommand(ctx context.Context, client service.Service, p *path.Command, of ObservationFlags, showPointees bool) error {
 	cmd, err := getCommand(ctx, client, p)
 	if err != nil {
 		return err
 	}
-	return printCommand(ctx, client, p, cmd, of)
+	return printCommand(ctx, client, p, cmd, of, showPointees)
 }
 
 func filterDevices(ctx context.Context, flags *DeviceFlags, gapis client.Client) ([]*path.Device, error) {
