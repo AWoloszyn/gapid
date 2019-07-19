@@ -941,6 +941,18 @@ import (
     }
   }
 
+  // Reset{{$slice_ty}} returns a {{$slice_ty}} with the given arguments.
+  // TODO: This is a temporary function while migrating to apic compile.
+  func (s *{{$slice_ty}}) Reset(root, base, size uint64, ϟg *ϟapi.GlobalState, pool ϟmem.PoolID) {
+    ϟl := ϟg.MemoryLayout
+    _ = ϟl
+    s.root =  root
+    s.base = base
+    s.size = size
+    s.count = size / {{Template "Go.SizeOf" $s.To}}
+    s.pool = pool
+  }
+
   // Make{{$slice_ty}} returns a {{$slice_ty}} backed by a new memory pool.
   func Make{{$slice_ty}}(count uint64, ϟg *ϟapi.GlobalState) {{$slice_ty}} {
     ϟl, ϟa := ϟg.MemoryLayout, ϟg.Arena; _, _ = ϟl, ϟa
@@ -1164,7 +1176,7 @@ import (
     }
     if pool, err := ϟg.Memory.Get(s.Pool()); err == nil {
       if f := pool.OnRead; f != nil {
-        f(s.Range())
+        f(s.Range(), {{$slice_ty}}TypeIndex)
       }
     }
     if ϟb != nil && s.Pool() == ϟmem.ApplicationPool {
@@ -1221,7 +1233,7 @@ import (
     }
     if pool, err := ϟg.Memory.Get(s.Pool()); err == nil {
       if f := pool.OnWrite; f != nil {
-        f(s.Range())
+        f(s.Range(), {{$slice_ty}}TypeIndex)
       }
     }
     if ϟb != nil && s.Pool() == ϟmem.ApplicationPool {

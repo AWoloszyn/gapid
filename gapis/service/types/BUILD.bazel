@@ -23,6 +23,8 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//core/data/pod:go_default_library",
+        "//core/os/device:go_default_library",
+        "//core/memory/arena:go_default_library",
         "//gapis/memory:go_default_library",
     ],
 )

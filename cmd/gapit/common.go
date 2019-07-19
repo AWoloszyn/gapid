@@ -388,7 +388,21 @@ func getConstantSet(ctx context.Context, client service.Service, p *path.Constan
 
 var typeCache = map[uint64]*types.Type{}
 
-func printCommand(ctx context.Context, client service.Service, p *path.Command, c *api.Command, of ObservationFlags, showPointees bool) error {
+func getType(ctx context.Context, client service.Service, t *path.Type) (*types.Type, error) {
+	if tp, ok := typeCache[t.TypeIndex]; ok {
+		return tp, nil
+	} else {
+		tp, err := client.Get(ctx, t.Path(), nil)
+		if err != nil {
+			return nil, err
+		}
+		tt := tp.(*types.Type)
+		typeCache[t.TypeIndex] = tt
+		return tt, nil
+	}
+}
+
+func printCommand(ctx context.Context, client service.Service, p *path.Command, c *api.Command, of ObservationFlags) error {
 	indices := make([]string, len(p.Indices))
 	for i, v := range p.Indices {
 		indices[i] = fmt.Sprintf("%d", v)
@@ -399,8 +413,6 @@ func printCommand(ctx context.Context, client service.Service, p *path.Command, 
 		t *path.Type
 		n string
 	}
-
-	vals := []val{}
 
 	params := make([]string, len(c.Parameters))
 	for i, p := range c.Parameters {
@@ -413,24 +425,6 @@ func printCommand(ctx context.Context, client service.Service, p *path.Command, 
 			v = constants.Sprint(v)
 		}
 		params[i] = fmt.Sprintf("%v: %v", p.Name, v)
-
-		if showPointees {
-			var t *types.Type
-			if tp, ok := typeCache[p.Type.TypeIndex]; ok {
-				t = tp
-			} else {
-				tp, err := client.Get(ctx, p.Type.Path(), nil)
-				if err != nil {
-					return err
-				}
-				t = tp.(*types.Type)
-				typeCache[p.Type.TypeIndex] = t
-			}
-			if _, ok := t.Ty.(*types.Type_Pointer); ok {
-				vals = append(vals, val{v.(uint64), p.Type, p.Name})
-			}
-		}
-
 	}
 	fmt.Printf("%v %v(%v)", indices, c.Name, strings.Join(params, ", "))
 	if c.Result != nil {
@@ -447,24 +441,7 @@ func printCommand(ctx context.Context, client service.Service, p *path.Command, 
 
 	fmt.Fprintln(os.Stdout, "")
 
-	for _, ptr := range vals {
-		v, err := client.Get(ctx,
-			(&path.MemoryAsType{
-				Address: ptr.p,
-				Pool:    0,
-				After:   p,
-				Type:    ptr.t,
-				Offset:  0,
-			}).Path(), nil)
-		if err != nil {
-			fmt.Fprintf(os.Stdout, "*%s: err %+v \n", ptr.n, err)
-		} else {
-			vv := v.(*memory_box.Value)
-			fmt.Fprintf(os.Stdout, "*%s: %+v \n", ptr.n, vv)
-		}
-	}
-
-	if of.Ranges || of.Data {
+	if of.Ranges || of.Data || of.TypedObservations {
 		mp := p.MemoryAfter(0, 0, math.MaxUint64)
 		mp.ExcludeData = true
 		mp.ExcludeObserved = true
@@ -473,20 +450,51 @@ func printCommand(ctx context.Context, client service.Service, p *path.Command, 
 			return log.Err(ctx, err, "Couldn't fetch memory observations")
 		}
 		m := boxedMemory.(*service.Memory)
-		for _, read := range m.Reads {
-			fmt.Printf("   R: [%v - %v]\n",
-				memory.BytePtr(read.Base),
-				memory.BytePtr(read.Base+read.Size-1))
-			if of.Data {
-				printMemoryData(ctx, client, p, read)
+
+		if of.TypedObservations {
+			for _, tm := range m.TypedRanges {
+				tp, err := getType(ctx, client, tm.Type)
+				if err != nil {
+					return err
+				}
+				sl := tp.GetSlice()
+				if sl == nil {
+					return fmt.Errorf("Observations are expected to be slices")
+				}
+				v, err := client.Get(ctx,
+					(&path.MemoryAsType{
+						Address: tm.Range.Base,
+						Size:    tm.Range.Size,
+						Pool:    0,
+						After:   p,
+						Type:    tm.Type,
+						Offset:  0,
+					}).Path(), nil)
+				if err != nil {
+					fmt.Fprintf(os.Stdout, "%s [%v]: err %+v \n", tp.Name, tm.Range, err)
+				} else {
+					vv := v.(*memory_box.Value)
+					fmt.Fprintf(os.Stdout, "%s [%v]: %+v \n", tp.Name, tm.Range, vv)
+				}
 			}
 		}
-		for _, write := range m.Writes {
-			fmt.Printf("   W: [%v - %v]\n",
-				memory.BytePtr(write.Base),
-				memory.BytePtr(write.Base+write.Size-1))
-			if of.Data {
-				printMemoryData(ctx, client, p, write)
+		if of.Ranges || of.Data {
+
+			for _, read := range m.Reads {
+				fmt.Printf("   R: [%v - %v]\n",
+					memory.BytePtr(read.Base),
+					memory.BytePtr(read.Base+read.Size-1))
+				if of.Data {
+					printMemoryData(ctx, client, p, read)
+				}
+			}
+			for _, write := range m.Writes {
+				fmt.Printf("   W: [%v - %v]\n",
+					memory.BytePtr(write.Base),
+					memory.BytePtr(write.Base+write.Size-1))
+				if of.Data {
+					printMemoryData(ctx, client, p, write)
+				}
 			}
 		}
 	}
@@ -505,12 +513,12 @@ func printMemoryData(ctx context.Context, client service.Service, p *path.Comman
 	return nil
 }
 
-func getAndPrintCommand(ctx context.Context, client service.Service, p *path.Command, of ObservationFlags, showPointees bool) error {
+func getAndPrintCommand(ctx context.Context, client service.Service, p *path.Command, of ObservationFlags) error {
 	cmd, err := getCommand(ctx, client, p)
 	if err != nil {
 		return err
 	}
-	return printCommand(ctx, client, p, cmd, of, showPointees)
+	return printCommand(ctx, client, p, cmd, of)
 }
 
 func filterDevices(ctx context.Context, flags *DeviceFlags, gapis client.Client) ([]*path.Device, error) {

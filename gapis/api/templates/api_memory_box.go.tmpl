@@ -146,9 +146,7 @@ var _ =  (*ϟmem.Size)(nil) // Force mem to be used, to avoid warnings
 
 {{define "BoxEnum"}}
   func (p {{$.Name}}) BoxValue(ϟctx context.Context, ϟc ϟapi.Cmd, ϟg *ϟapi.GlobalState) *memory_box.Value {
-    return &memory_box.Value {
-      Val: &memory_box.Value_Null { &memory_box.Null {} },
-    }
+    return memory_box.Box((uint64)(p), ϟctx, ϟc, ϟg)
   }
 {{end}}
 

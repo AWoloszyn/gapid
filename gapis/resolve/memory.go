@@ -16,10 +16,10 @@ package resolve
 
 import (
 	"context"
-	"fmt"
 	"reflect"
 
 	"github.com/google/gapid/core/app/analytics"
+	"github.com/google/gapid/core/log"
 	"github.com/google/gapid/core/math/interval"
 	"github.com/google/gapid/gapis/api"
 	"github.com/google/gapid/gapis/api/sync"
@@ -35,6 +35,7 @@ import (
 
 var (
 	tyPointer = reflect.TypeOf((*memory.ReflectPointer)(nil)).Elem()
+	tySlice   = reflect.TypeOf((*api.Slice)(nil)).Elem()
 )
 
 // Memory resolves and returns the memory from the path p.
@@ -79,16 +80,40 @@ func Memory(ctx context.Context, p *path.Memory, rc *path.ResolveConfig) (*servi
 
 	r := memory.Range{Base: p.Address, Size: p.Size}
 	var reads, writes, observed memory.RangeList
+	var typedRanges []*service.TypedMemoryRange
+
 	s.Memory.SetOnCreate(func(id memory.PoolID, pool *memory.Pool) {
 		if id == memory.PoolID(p.Pool) {
-			pool.OnRead = func(rng memory.Range) {
+			pool.OnRead = func(rng memory.Range, id uint64) {
 				if rng.Overlaps(r) {
 					interval.Merge(&reads, rng.Window(r).Span(), false)
+					if p.IncludeTypes {
+						typedRanges = append(typedRanges,
+							&service.TypedMemoryRange{
+								Type: &path.Type{TypeIndex: id},
+								Range: &service.MemoryRange{
+									Base: rng.Base,
+									Size: rng.Size,
+								},
+							},
+						)
+					}
 				}
 			}
-			pool.OnWrite = func(rng memory.Range) {
+			pool.OnWrite = func(rng memory.Range, id uint64) {
 				if rng.Overlaps(r) {
 					interval.Merge(&writes, rng.Window(r).Span(), false)
+					if p.IncludeTypes {
+						typedRanges = append(typedRanges,
+							&service.TypedMemoryRange{
+								Type: &path.Type{TypeIndex: id},
+								Range: &service.MemoryRange{
+									Base: rng.Base,
+									Size: rng.Size,
+								},
+							},
+						)
+					}
 				}
 			}
 		}
@@ -118,10 +143,11 @@ func Memory(ctx context.Context, p *path.Memory, rc *path.ResolveConfig) (*servi
 	}
 
 	return &service.Memory{
-		Data:     data,
-		Reads:    service.NewMemoryRanges(reads),
-		Writes:   service.NewMemoryRanges(writes),
-		Observed: service.NewMemoryRanges(observed),
+		Data:        data,
+		Reads:       service.NewMemoryRanges(reads),
+		Writes:      service.NewMemoryRanges(writes),
+		Observed:    service.NewMemoryRanges(observed),
+		TypedRanges: typedRanges,
 	}, nil
 }
 
@@ -176,39 +202,60 @@ func MemoryAsType(ctx context.Context, p *path.MemoryAsType, rc *path.ResolveCon
 		return nil, err
 	}
 
-	if !r.Implements(tyPointer) {
-		return nil, fmt.Errorf("You can only get memory from a pointer")
-	}
+	if r.Implements(tyPointer) {
+		v := reflect.New(r).Elem()
+		v.Set(reflect.ValueOf(p.Address).Convert(r))
+		sl := v.MethodByName("SliceInPool")
+		slc := sl.Call([]reflect.Value{
+			reflect.ValueOf(p.Offset),
+			reflect.ValueOf(p.Offset + 1),
+			reflect.ValueOf(s.MemoryLayout),
+			reflect.ValueOf(memory.PoolID(p.Pool)),
+		})
 
-	v := reflect.New(r).Elem()
-	v.Set(reflect.ValueOf(p.Address).Convert(r))
-	sl := v.MethodByName("SliceInPool")
-	slc := sl.Call([]reflect.Value{
-		reflect.ValueOf(p.Offset),
-		reflect.ValueOf(p.Offset + 1),
-		reflect.ValueOf(s.MemoryLayout),
-		reflect.ValueOf(memory.PoolID(p.Pool)),
-	})
+		mr := slc[0].MethodByName("Read")
 
-	mr := slc[0].MethodByName("Read")
+		rlsc := mr.Call([]reflect.Value{
+			reflect.ValueOf(ctx),
+			reflect.ValueOf(cmds[len(cmds)-1]),
+			reflect.ValueOf(s),
+			reflect.New(reflect.TypeOf((*builder.Builder)(nil))).Elem(),
+		})
 
-	rlsc := mr.Call([]reflect.Value{
-		reflect.ValueOf(ctx),
-		reflect.ValueOf(cmds[len(cmds)-1]),
-		reflect.ValueOf(s),
-		reflect.New(reflect.TypeOf((*builder.Builder)(nil))).Elem(),
-	})
-
-	if err, ok := rlsc[1].Interface().(error); ok {
-		return nil, err
-	}
-
-	var retVal *memory_box.Value
-	defer func() {
-		if e := recover(); e != nil {
-			err = e.(error)
+		if err, ok := rlsc[1].Interface().(error); ok {
+			return nil, err
 		}
-	}()
-	retVal = memory_box.Box(rlsc[0].Index(0).Interface(), ctx, cmds[len(cmds)-1], s)
-	return retVal, err
+
+		var retVal *memory_box.Value
+		defer func() {
+			if e := recover(); e != nil {
+				err = e.(error)
+			}
+		}()
+		retVal = memory_box.Box(rlsc[0].Index(0).Interface(), ctx, cmds[len(cmds)-1], s)
+		return retVal, err
+	} else if reflect.PtrTo(r).Implements(tySlice) {
+		v := reflect.New(r)
+		res := v.MethodByName("Reset")
+		res.Call([]reflect.Value{
+			reflect.ValueOf(p.Address),
+			reflect.ValueOf(p.Address),
+			reflect.ValueOf(p.Size),
+			reflect.ValueOf(s),
+			reflect.ValueOf(memory.PoolID(p.Pool)),
+		})
+
+		var retVal *memory_box.Value
+		defer func() {
+			if e := recover(); e != nil {
+				err = e.(error)
+			}
+		}()
+		retVal = memory_box.Box(v.Elem().Interface(), ctx, cmds[len(cmds)-1], s)
+		if err != nil {
+			return nil, err
+		}
+		return retVal, err
+	}
+	return nil, log.Err(ctx, nil, "Expected pointer or slice type")
 }
