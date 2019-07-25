@@ -101,6 +101,7 @@ bool Vulkan::replayCreateVkInstanceImpl(Stack* stack,
   std::vector<const char*> layers(
       pCreateInfo->ppEnabledLayerNames,
       pCreateInfo->ppEnabledLayerNames + pCreateInfo->enabledLayerCount);
+  layers.push_back("APITiming");
   layers.reserve(pCreateInfo->enabledLayerCount + 1);
   std::vector<const char*> extensions(pCreateInfo->ppEnabledExtensionNames,
                                       pCreateInfo->ppEnabledExtensionNames +

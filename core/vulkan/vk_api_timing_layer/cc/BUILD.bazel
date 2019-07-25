@@ -22,6 +22,7 @@ api_template(
     outputs = [
         "layer.h",
         "layer.cpp",
+        "layer_impl.cpp",
     ],
     template = "timing_layer.tmpl",
 )
@@ -62,12 +63,15 @@ cc_library(
         "//conditions:default": [
             "-ldl",
             "-lm",
+            "-llog",
         ],
     }),
     visibility = ["//visibility:public"],
     deps = [
+        "//core/cc",
         "//core/vulkan/cc/include/vulkan",
         "//core/vulkan/layer_helpers",
+#    "//@perfetto//:tracing_ipc",
     ],
 )
 

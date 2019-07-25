@@ -255,13 +255,21 @@ VKAPI_ATTR VkResult VKAPI_CALL physical_device_layer_properties(
 VK_LAYER_EXPORT VKAPI_ATTR VkResult VKAPI_CALL
 vkEnumerateInstanceLayerProperties(uint32_t *pPropertyCount,
                                    VkLayerProperties *pProperties) {
+<<<<<<< HEAD
 
+=======
+  
+>>>>>>> 05d21baf... Expanding the auto-timing layer.
   PFN_vkEnumerateInstanceLayerProperties next = &get_layer_properties;
   {{if Macro "NameInOverrides" "vkEnumerateInstanceLayerProperties"}}
     return (VkResult){{(Global "Vulkan.LayerNamespace")}}::vkEnumerateInstanceLayerProperties(next, pPropertyCount, pProperties);
   {{else}}
     return (VkResult) next(pPropertyCount, pProperties);
+<<<<<<< HEAD
   {{end}}
+=======
+  {{end}} 
+>>>>>>> 05d21baf... Expanding the auto-timing layer.
 }
 
 VK_LAYER_EXPORT VKAPI_ATTR VkResult VKAPI_CALL
@@ -272,7 +280,11 @@ vkEnumerateDeviceLayerProperties(VkPhysicalDevice device, uint32_t *pPropertyCou
   {{if Macro "NameInOverrides" "vkEnumerateDeviceLayerProperties"}}
     return (VkResult){{(Global "Vulkan.LayerNamespace")}}::vkEnumerateDeviceLayerProperties(next, device, pPropertyCount, pProperties);
   {{else}}
+<<<<<<< HEAD
     return (VkResult) next(device, pPropertyCount, pProperties);
+=======
+    return (VkResult) next(pPropertyCount, pProperties);
+>>>>>>> 05d21baf... Expanding the auto-timing layer.
   {{end}}
 }
 
