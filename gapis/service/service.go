@@ -180,12 +180,27 @@ type Service interface {
 
 	// Run a perfetto query
 	PerfettoQuery(ctx context.Context, c *path.Capture, query string) (*perfetto.QueryResult, error)
+
+	// Stream commands
+	StreamCommands(ctx context.Context, h StreamResponseHandler) (StreamRequestHandler, error)
 }
 
 type TraceHandler interface {
 	Initialize(context.Context, *TraceOptions) (*StatusResponse, error)
 	Event(context.Context, TraceEvent) (*StatusResponse, error)
 	Dispose(context.Context)
+}
+
+type StreamRequestHandler interface {
+	StartStream(context.Context, *StreamStartRequest) error
+	HandleResponse(context.Context, *StreamCommandsRequest)
+	Dispose(context.Context)
+}
+type StreamResponseHandler interface {
+	OnCallback(context.Context, *api.Command)
+	OnRequestReturn(context.Context, *StreamCommandsResponse)
+	OnError(context.Context, error)
+	OnDone(context.Context)
 }
 
 // FindHandler is the handler of found items using Service.Find.

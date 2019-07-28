@@ -27,6 +27,7 @@ go_library(
     deps = [
         "//core/data/pod:go_default_library",
         "//core/log:go_default_library",
+        "//core/os/device:go_default_library",
         "//gapis/memory:go_default_library",
         "//gapis/service/types:go_default_library",
     ],

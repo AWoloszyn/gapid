@@ -424,3 +424,16 @@ func (t *Type) Size(ctx context.Context, d *device.MemoryLayout) (int, error) {
 	}
 	return 0, log.Err(ctx, nil, "Incomplete type size")
 }
+
+// SizeAlignment returns both the size and alignment of the given type.
+func (t *Type) SizeAlignment(ctx context.Context, d *device.MemoryLayout) (*TypeSize, error) {
+	sz, err := t.Size(ctx, d)
+	if err != nil {
+		return nil, err
+	}
+	al, err := t.Alignment(ctx, d)
+	if err != nil {
+		return nil, err
+	}
+	return &TypeSize{ByteSize:uint64(sz), ByteAlignment:uint64(al)}, nil
+}

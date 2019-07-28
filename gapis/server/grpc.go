@@ -34,6 +34,7 @@ import (
 	"github.com/google/gapid/core/log/log_pb"
 	"github.com/google/gapid/core/net/grpcutil"
 	"github.com/google/gapid/gapis/service"
+	"github.com/google/gapid/gapis/api"
 
 	"google.golang.org/grpc"
 
@@ -627,6 +628,63 @@ func (s *grpcServer) Trace(conn service.Gapid_TraceServer) error {
 		}
 	}
 	return nil
+}
+
+type grpcStreamResponse struct {
+	conn service.Gapid_StreamCommandsServer
+}
+
+func (s *grpcStreamResponse) OnCallback(ctx context.Context, cmd *api.Command) {
+	r := &service.StreamCommandsResponse{
+		Res: &service.StreamCommandsResponse_Command{cmd}}
+	s.conn.Send(r)
+}
+
+func (s *grpcStreamResponse) OnRequestReturn(ctx context.Context, r *service.StreamCommandsResponse) {
+	s.conn.Send(r)
+}
+
+func (s *grpcStreamResponse) OnDone(ctx context.Context) {
+	r := &service.StreamCommandsResponse{
+		Res: &service.StreamCommandsResponse_Done{true}}
+	s.conn.Send(r)
+}
+
+func (s *grpcStreamResponse) OnError(ctx context.Context, e error) {
+	err := service.NewError(e)
+	r := &service.StreamCommandsResponse{
+		Res: &service.StreamCommandsResponse_Error{err}}
+	s.conn.Send(r)
+}
+
+func (s *grpcServer) StreamCommands(conn service.Gapid_StreamCommandsServer) error {
+	ctx := s.bindCtx(conn.Context())
+	ctx = status.Start(ctx, "Stream Commands")
+	respHandler := &grpcStreamResponse{conn}
+
+	defer status.Finish(ctx)
+	t, err := s.handler.StreamCommands(ctx, respHandler)
+	if err != nil {
+		return err
+	}
+	defer t.Dispose(ctx)
+	for {
+		req, err := conn.Recv()
+		if err == io.EOF {
+			panic(err)
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+
+		switch r := req.Req.(type) {
+		case *service.StreamCommandsRequest_Start:
+			t.StartStream(ctx, r.Start)
+		default:
+			t.HandleResponse(ctx, req)
+		}
+	}
 }
 
 func (s *grpcServer) GetTimestamps(req *service.GetTimestampsRequest, server service.Gapid_GetTimestampsServer) error {

@@ -852,3 +852,52 @@ func (s *server) PerfettoQuery(ctx context.Context, c *path.Capture, query strin
 	}
 	return res, nil
 }
+
+type srq struct {
+	c chan *service.StreamCommandsRequest
+	r service.StreamResponseHandler
+}
+
+func (s *srq) StartStream(ctx context.Context, start *service.StreamStartRequest) error {
+	go func() {
+		err := replay.Stream(ctx, start, s)
+		if err != nil {
+			s.r.OnError(ctx, err)
+		} else {
+			s.r.OnDone(ctx)
+		}
+	}()
+	return nil
+}
+
+func (s *srq) HandleResponse(ctx context.Context, req *service.StreamCommandsRequest) {
+	s.c <- req
+}
+
+func (s *srq) Dispose(ctx context.Context) {
+	log.E(ctx, "Dispose")
+}
+
+func (s *srq) GetUserResponse() (*service.StreamCommandsRequest, error) {
+	return <-s.c, nil
+}
+
+func (s *srq) OnCallback(ctx context.Context, cmd *api.Command) {
+	s.r.OnCallback(ctx, cmd)
+}
+
+func (s *srq) OnRequestReturn(ctx context.Context, r *service.StreamCommandsResponse) {
+	s.r.OnRequestReturn(ctx, r)
+}
+
+func (s *srq) OnDone(ctx context.Context) {
+	s.r.OnDone(ctx)
+}
+
+func (s *srq) OnError(ctx context.Context, e error) {
+	s.r.OnError(ctx, e)
+}
+
+func (s *server) StreamCommands(ctx context.Context, r service.StreamResponseHandler) (service.StreamRequestHandler, error) {
+	return &srq{make(chan *service.StreamCommandsRequest), r}, nil
+}

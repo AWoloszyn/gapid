@@ -66,6 +66,7 @@ message Any {
     Stats stats = 38;
     Thumbnail thumbnail = 39;
     Type type = 40;
+    TypeSize type_size = 41;
   }
 }
 
@@ -179,6 +180,13 @@ message Parameter {
 // Type is the path to a type used in an API.
 message Type {
   uint64 type_index = 1;
+}
+
+// Returns the size of the given type in the context
+// of the given capture.
+message TypeSize {
+  Type type = 1;
+  Capture capture = 2;
 }
 
 // Result is the path to the result value of a command.

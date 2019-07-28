@@ -547,3 +547,9 @@ func (c *client) PerfettoQuery(ctx context.Context, capture *path.Capture, query
 	}
 	return res.GetResult(), nil
 }
+
+
+// TODO(awoloszyn): Fill this out more completely.
+func (c *client) StreamCommands(ctx context.Context, r service.StreamResponseHandler) (service.StreamRequestHandler, error) {
+	return nil, nil
+}
