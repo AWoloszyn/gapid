@@ -33,6 +33,8 @@ go_library(
         "manager.go",
         "mapping_exporter.go",
         "replay.go",
+        "replay_connection.go",
+        "stream.go",
         "timestamps.go",
         "wait_for_fence.go",
     ],
@@ -61,6 +63,7 @@ go_library(
         "//gapis/config:go_default_library",
         "//gapis/database:go_default_library",
         "//gapis/memory:go_default_library",
+        "//gapis/messages:go_default_library",
         "//gapis/replay/builder:go_default_library",
         "//gapis/replay/scheduler:go_default_library",
         "//gapis/replay/value:go_default_library",
@@ -70,6 +73,8 @@ go_library(
         "//gapis/trace:go_default_library",
         "//tools/build/third_party/perfetto:config_go_proto",
         "@com_github_golang_protobuf//proto:go_default_library",
+        "//gapis/service/types:go_default_library",
+        "//gapis/service/memory_box:go_default_library",
     ],
 )
 

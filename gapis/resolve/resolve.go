@@ -107,6 +107,19 @@ func Type(ctx context.Context, p *path.Type, r *path.ResolveConfig) (interface{}
 	return t, err
 }
 
+func TypeSize(ctx context.Context, p *path.TypeSize, r *path.ResolveConfig) (interface{}, error) {
+	c, err := capture.ResolveGraphicsFromPath(ctx, p.Capture)
+	if err != nil {
+		return nil, err
+	}
+	t, err := types.GetType(p.Type.TypeIndex)
+	if err != nil {
+		return nil, err
+	}
+
+	return t.SizeAlignment(ctx, c.Header.ABI.MemoryLayout)
+}
+
 func Messages(ctx context.Context, p *path.Messages) (interface{}, error) {
 	c, err := capture.ResolveGraphicsFromPath(ctx, p.Capture)
 	if err != nil {

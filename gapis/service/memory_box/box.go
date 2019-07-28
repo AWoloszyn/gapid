@@ -19,6 +19,7 @@ import (
 
 	"github.com/google/gapid/core/data/pod"
 	"github.com/google/gapid/core/log"
+	"github.com/google/gapid/core/os/device"
 	"github.com/google/gapid/gapis/memory"
 	"github.com/google/gapid/gapis/service/types"
 )
@@ -280,4 +281,52 @@ func Box(ctx context.Context, d *memory.Decoder, t *types.Type) (*Value, error) 
 		return nil, log.Err(ctx, nil, "Cannot decode slices from memory")
 	}
 	return nil, log.Err(ctx, nil, "Unhandled box type")
+}
+
+func DecodeMemory(ctx context.Context, l *device.MemoryLayout, dec *memory.Decoder, size uint64, e *types.Type)  (*Value, error) {
+	sz := size
+	nElems := 1
+	elemSize := 0
+	isSlice := false
+	ty := e
+	var err error
+	if sl, ok := e.Ty.(*types.Type_Slice); ok {
+		isSlice = true
+		sliceType, err := types.GetType(sl.Slice.Underlying)
+		if err != nil {
+			return nil, err
+		}
+		elemSize, err = sliceType.Size(ctx, l)
+		if err != nil {
+			return nil, err
+		}
+		if size == 0 {
+			return nil, log.Err(ctx, nil, "Cannot have an unsized range with a slice")
+		}
+		nElems = int(sz / uint64(elemSize))
+		ty = sliceType
+	} else {
+		elemSize, err = e.Size(ctx, l)
+		if err != nil {
+			return nil, err
+		}
+	}
+	vals := []*Value{}
+	for i := 0; i < nElems; i++ {
+		v, err := Box(ctx, dec, ty)
+		if err != nil {
+			return nil, err
+		}
+		vals = append(vals, v)
+	}
+
+	if isSlice {
+		return &Value{
+			Val: &Value_Slice{
+				Slice: &Slice{
+					Values: vals,
+				}}}, nil
+	}
+
+	return vals[0], nil
 }

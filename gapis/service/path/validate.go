@@ -337,3 +337,9 @@ func (n *Type) Validate() error {
 	}
 	return fmt.Errorf("Invalid path '%v': type must not be nil", n)
 }
+
+
+// Validate checks the path is valid.
+func (n *TypeSize) Validate() error {
+	return checkNotNilAndValidate(n, n.Capture, "capture")
+}

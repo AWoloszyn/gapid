@@ -739,6 +739,9 @@ service Gapid {
   // GpuProfile starts a perfetto trace of a gfxtrace
   rpc GpuProfile(GpuProfileRequest) returns (GpuProfileResponse) {
   }
+  // StreamCommands returns a stream that allows commands to be streamed, and
+  // data to be requested on-demand.
+  rpc StreamCommands(stream StreamCommandsRequest) returns (stream StreamCommandsResponse) {}
 
   ///////////////////////////////////////////////////////////////
   // Below are debugging APIs which may be removed in the future.
@@ -1398,4 +1401,43 @@ message GetTimestampsResponse {
 
 // Passes the current command, unmodified
 message Pass {
+}
+
+message StreamCommandsRequest {
+  oneof req {
+    StreamStartRequest start = 1;
+    Pass pass_command = 2;
+    GetMemory get_memory = 3;
+  }
+}
+
+message GetMemory {
+  uint64 pointer = 1;
+  path.Type type = 2;
+  uint64 offset = 3;
+}
+
+message GetRawMemory {
+  uint64 pointer = 1;
+  uint64 size = 2;
+}
+
+message StreamCommandsResponse {
+  oneof res {
+    api.Command command = 1;
+    bool done = 2;
+    bool initial_commands_done = 3;
+    Error error = 4;
+    memory_box.Value read_object = 5;
+    bytes read_data = 6;
+  }
+}
+
+// Starts a stream of commands to be executed
+message StreamStartRequest {
+  path.Capture capture = 1;
+  path.Device replay_device = 2;
+  repeated string command_names = 3;
+  bool pass_default = 4;
+  bool include_initial_commands = 5;
 }

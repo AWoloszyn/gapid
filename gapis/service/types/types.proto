@@ -40,6 +40,11 @@ message Type {
   }
 }
 
+message TypeSize {
+  uint64 byte_size = 1;
+  uint64 byte_alignment = 2;
+}
+
 message StructType {
   repeated StructField fields = 1;
 }

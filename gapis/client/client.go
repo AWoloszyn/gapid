@@ -589,3 +589,8 @@ func (c *client) ValidateDevice(ctx context.Context, device *path.Device) error 
 	}
 	return nil
 }
+
+// TODO(awoloszyn): Fill this out more completely.
+func (c *client) StreamCommands(ctx context.Context, r service.StreamResponseHandler) (service.StreamRequestHandler, error) {
+	return nil, nil
+}

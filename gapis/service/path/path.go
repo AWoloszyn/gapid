@@ -98,6 +98,7 @@ func (n *StateTreeNodeForPath) Path() *Any      { return &Any{Path: &Any_StateTr
 func (n *Stats) Path() *Any                     { return &Any{Path: &Any_Stats{n}} }
 func (n *Thumbnail) Path() *Any                 { return &Any{Path: &Any_Thumbnail{n}} }
 func (n *Type) Path() *Any                      { return &Any{Path: &Any_Type{n}} }
+func (n *TypeSize) Path() *Any                  { return &Any{Path: &Any_TypeSize{n}} }
 
 func (n API) Parent() Node                       { return nil }
 func (n ArrayIndex) Parent() Node                { return oneOfNode(n.Array) }
@@ -140,6 +141,7 @@ func (n StateTreeNodeForPath) Parent() Node      { return nil }
 func (n Stats) Parent() Node                     { return n.Capture }
 func (n Thumbnail) Parent() Node                 { return oneOfNode(n.Object) }
 func (n Type) Parent() Node                      { return nil }
+func (n TypeSize) Parent() Node                      { return n.Capture }
 
 func (n *API) SetParent(p Node)                       {}
 func (n *Blob) SetParent(p Node)                      {}
@@ -175,6 +177,7 @@ func (n *StateTreeNode) SetParent(p Node)             {}
 func (n *StateTreeNodeForPath) SetParent(p Node)      {}
 func (n *Stats) SetParent(p Node)                     { n.Capture, _ = p.(*Capture) }
 func (n *Type) SetParent(p Node)                      {}
+func (n *TypeSize) SetParent(p Node)                      { n.Capture, _ = p.(*Capture) }
 
 // Format implements fmt.Formatter to print the path.
 func (n ArrayIndex) Format(f fmt.State, c rune) {
@@ -316,6 +319,8 @@ func (n Stats) Format(f fmt.State, c rune) { fmt.Fprintf(f, "%v.stats", n.Parent
 func (n Thumbnail) Format(f fmt.State, c rune) { fmt.Fprintf(f, "%v.thumbnail", n.Parent()) }
 
 func (n Type) Format(f fmt.State, c rune) { fmt.Fprintf(f, "%v.type", n.TypeIndex) }
+
+func (n TypeSize) Format(f fmt.State, c rune) { fmt.Fprintf(f, "%v.%v.type_size", n.Parent(), n.Type) }
 
 func (n *As) SetParent(p Node) {
 	switch p := p.(type) {
