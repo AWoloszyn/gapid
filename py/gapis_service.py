@@ -17,6 +17,7 @@ import types
 class iter(object):
   def __init__(self, capture, class_handler, stub):
     self.class_handler = class_handler
+    self.class_handler.ch = self.get_memory
     self.init = True
     self.cv = threading.Semaphore()
     self.lock = threading.Lock()
@@ -35,7 +36,6 @@ class iter(object):
            ))
     ]
     
-
   def set_response_handler(self, handler):
     self.handler = handler
 
@@ -76,6 +76,7 @@ class iter(object):
           self.class_handler.initial_commands_done()
           continue
       c = command(self, g, self.tm)
+      self.class_handler.ch = self
       if hasattr(self.class_handler, c.name):
         getattr(self.class_handler, c.name)(*[x[1] for x in c.ordered_params])
       elif self.use_default:
@@ -86,6 +87,14 @@ class iter(object):
             pass_command=Proto.Pass())
       )
 
+  def get_memory(self):
+    self.put(
+      Proto.StreamCommandsRequest(
+        get_memory=Proto.GetMemory()
+      )
+    )
+    aa = self.get()
+    return aa
 
 class gapis_connection(object):
     def __init__(self, port):

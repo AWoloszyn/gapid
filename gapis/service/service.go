@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sort"
 	"time"
 
 	"github.com/google/gapid/core/data/id"
@@ -373,4 +374,38 @@ func (r *Resources) Find(ty api.ResourceType, id id.ID) (*Resource, error) {
 	return r.FindSingle(func(t api.ResourceType, r Resource) bool {
 		return t == ty && r.ID.ID() == id
 	})
+}
+
+type TypedMemoryRanges []*TypedMemoryRange
+func (r* TypedMemoryRanges) Filter() {
+	if r == nil || len(*r) == 0 {
+		return
+	}
+	sort.Slice(*r, func(i, j int) bool {
+		return ((*r)[i].Root < (*r)[j].Root ||
+			(*r)[i].Root == (*r)[j].Root &&
+				(*r)[i].Type.TypeIndex < (*r)[j].Type.TypeIndex)
+	})
+	newRanges := []*TypedMemoryRange{(*r)[0]}
+	last := 0
+	for i := 1; i < len(*r); i++ {
+		if newRanges[last].Root == (*r)[i].Root &&
+			newRanges[last].Type.TypeIndex == (*r)[i].Type.TypeIndex {
+			start := newRanges[last].Range.Base
+			if start > (*r)[i].Range.Base {
+				start = (*r)[i].Range.Base
+			}
+			end := newRanges[last].Range.Base + newRanges[last].Range.Size
+			if end < (*r)[i].Range.Base+(*r)[i].Range.Size {
+				end = (*r)[i].Range.Base + (*r)[i].Range.Size
+			}
+
+			newRanges[last].Range.Base = start
+			newRanges[last].Range.Size = end - start
+		} else {
+			last = len(newRanges)
+			newRanges = append(newRanges, (*r)[i])
+		}
+	}
+	*r = newRanges
 }
