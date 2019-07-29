@@ -17,7 +17,7 @@ class typed_val(object):
   def __getitem__(self, index):
     self.handler.put(
       Proto.StreamCommandsRequest(
-        get_memory=Proto.GetMemory(
+        resolve_object=Proto.ResolveObject(
               pointer = self.val,
               type = Path.Type(type_index=self.type.underlying().id),
               offset = index,
@@ -27,8 +27,7 @@ class typed_val(object):
     if (type(self.type.underlying()) != gapis_types.struct_type):
       return typed_val(self.handler, self.type.underlying(), self.type.underlying().get_value()(aa.read_object))
     return typed_val(self.handler, self.type.underlying(), aa.read_object)
-
-
+  
 class command(object):
   def __init__(self, handler, proto, tm):
     self.params = {}

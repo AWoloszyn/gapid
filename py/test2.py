@@ -10,16 +10,17 @@ class Handler(object):
     self.i = 0
 
   def vkQueueSubmit(self, queue, submitCount, pSubmits, fence):
-    print("vkQueueSubmit({}, {}, {}, {})".format(queue, submitCount, pSubmits, fence))
-    print("pSubmitInfo[0] = {}".format(pSubmits[0]))
-    print("pSubmitInfo[0].pCommandBuffers[0] = {}".format(pSubmits[0].pCommandBuffers[0]))
-    x = [pSubmits[0].pCommandBuffers[x].val for x in range(pSubmits[0].commandBufferCount.val)]
-    print(x)
+    self.default("vkQueueSubmit", queue, submitCount, pSubmits, fence)
+    #print("vkQueueSubmit({}, {}, {}, {})".format(queue, submitCount, pSubmits, fence))
+    #print("pSubmitInfo[0] = {}".format(pSubmits[0]))
+    #print("pSubmitInfo[0].pCommandBuffers[0] = {}".format(pSubmits[0].pCommandBuffers[0]))
+    #x = [pSubmits[0].pCommandBuffers[x].val for x in range(pSubmits[0].commandBufferCount.val)]
+    #print(x)
     self.i = self.i + 1
 
-  
   def vkQueuePresentKHR(self, queue, pPresentInfo):
-    print("vkQueuePresent({}, {})".format(queue, pPresentInfo))
+    self.default("vkQueuePresentKHR", queue, pPresentInfo)    
+    #print("vkQueuePresent({}, {})".format(queue, pPresentInfo))
     self.i = self.i + 1
 
   def initial_commands_done(self):
@@ -27,6 +28,10 @@ class Handler(object):
   
   def default(self, name, *args):
     self.i = self.i + 1
+    aa = self.ch.get_memory()
+    #print(aa)
+    if self.i % 100 == 0:
+      print("--- {}".format(self.i))
 
 if __name__ == '__main__':
   conn = gapis_connection(40000)

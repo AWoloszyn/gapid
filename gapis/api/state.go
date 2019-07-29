@@ -111,6 +111,18 @@ func NewStateWithAllocator(allocator memory.Allocator, memoryLayout *device.Memo
 	}
 }
 
+func (g *GlobalState) Clone(ctx context.Context) *GlobalState {
+	newState := NewStateWithEmptyAllocator(g.MemoryLayout)
+	newState.Memory = g.Memory.Clone()
+	// Clone serialized state, and initialize it for use.
+	for k, v := range g.APIs {
+		s := v.Clone(newState.Arena)
+		s.SetupInitialState(ctx)
+		newState.APIs[k] = s
+	}
+	return newState
+}
+
 // ReserveMemory reserves the specifed memory ranges from the state's allocator,
 // preventing them from being allocated.
 // ReserveMemory is a fluent helper function for calling

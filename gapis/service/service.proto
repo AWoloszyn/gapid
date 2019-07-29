@@ -1407,19 +1407,23 @@ message StreamCommandsRequest {
   oneof req {
     StreamStartRequest start = 1;
     Pass pass_command = 2;
-    GetMemory get_memory = 3;
+    ResolveObject resolve_object = 3;
+    GetMemory get_memory = 4;
   }
 }
 
-message GetMemory {
+message ResolveObject {
   uint64 pointer = 1;
   path.Type type = 2;
   uint64 offset = 3;
 }
 
-message GetRawMemory {
-  uint64 pointer = 1;
-  uint64 size = 2;
+
+message GetMemory {
+}
+
+message TypedRangeResponse {
+  repeated TypedMemoryRange ranges = 1;
 }
 
 message StreamCommandsResponse {
@@ -1430,6 +1434,7 @@ message StreamCommandsResponse {
     Error error = 4;
     memory_box.Value read_object = 5;
     bytes read_data = 6;
+    TypedRangeResponse typed_ranges = 7;
   }
 }
 

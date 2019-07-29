@@ -30,6 +30,7 @@ import (
 	"github.com/google/gapid/gapis/messages"
 	"github.com/google/gapid/gapis/resolve/initialcmds"
 	"github.com/google/gapid/gapis/service"
+	"github.com/google/gapid/gapis/service/path"
 	"github.com/google/gapid/gapis/service/memory_box"
 	"github.com/google/gapid/gapis/service/types"
 )
@@ -55,8 +56,7 @@ type streamer struct {
 	comm streamCommunication
 }
 
-func getMemory(ctx context.Context, command api.Cmd, st *api.GlobalState, base uint64, t uint64, offs uint64) (*memory_box.Value, error) {
-	
+func resolveObject(ctx context.Context, command api.Cmd, st *api.GlobalState, base uint64, t uint64, offs uint64) (*memory_box.Value, error) {
 	// Check whether the requested pool was ever created.
 	pool, err := st.Memory.Get(memory.ApplicationPool)
 	if err != nil {
@@ -136,17 +136,20 @@ func Stream(
 	} else {
 		state = c.NewState(ctx)
 	}
-	backup_pools := state.Memory.Clone()
+	backup_state := state.Clone(ctx)
 	
 	doCmd := func(ctx context.Context, id api.CmdID, cmd api.Cmd) error {
 		process := req.PassDefault
+		typedRanges := service.TypedMemoryRanges{}
+		readMemory := false
+
 		if !process {
 			_, process = m[cmd.CmdName()]
 		}
 
 		if process {
-			cmd.Extras().Observations().ApplyReads(backup_pools.ApplicationPool())
-			cmd.Extras().Observations().ApplyWrites(backup_pools.ApplicationPool())
+			cmd.Extras().Observations().ApplyReads(backup_state.Memory.ApplicationPool())
+			cmd.Extras().Observations().ApplyWrites(backup_state.Memory.ApplicationPool())
 			
 			c, err := api.CmdToService(cmd)
 			if err != nil {
@@ -166,14 +169,12 @@ func Stream(
 				case *service.StreamCommandsRequest_PassCommand:
 					_ = t
 					break loop
-				case *service.StreamCommandsRequest_GetMemory:
-					old_pools := state.Memory
-					state.Memory = backup_pools
-					v, err := getMemory(ctx, cmd, state, t.GetMemory.Pointer, t.GetMemory.Type.TypeIndex, t.GetMemory.Offset)
+				case *service.StreamCommandsRequest_ResolveObject:
+					v, err := resolveObject(ctx, cmd, backup_state, t.ResolveObject.Pointer, t.ResolveObject.Type.TypeIndex, t.ResolveObject.Offset)
 					if err != nil {
 						return err
 					}
-					state.Memory = old_pools
+					
 					comm.OnRequestReturn(ctx,
 						&service.StreamCommandsResponse{
 							Res: &service.StreamCommandsResponse_ReadObject{
@@ -181,11 +182,71 @@ func Stream(
 							},
 						},
 					)
+				case *service.StreamCommandsRequest_GetMemory:
+					if readMemory {
+						comm.OnRequestReturn(ctx,
+							&service.StreamCommandsResponse{
+								Res: &service.StreamCommandsResponse_TypedRanges{
+									&service.TypedRangeResponse {
+										Ranges: typedRanges,
+									},
+								},
+							},
+						)
+						continue
+					}
+					readMemory = true
+					backup_state.Memory.SetOnCreate(func(id memory.PoolID, pool *memory.Pool) {
+						pool.OnRead = func(rng memory.Range, root uint64, id uint64) {
+							typedRanges = append(typedRanges,
+								&service.TypedMemoryRange{
+									Type: &path.Type{TypeIndex: id},
+									Range: &service.MemoryRange{
+										Base: rng.Base,
+										Size: rng.Size,
+									},
+									Root: root,
+								},
+							)
+						}
+						pool.OnWrite = func(rng memory.Range, root uint64, id uint64) {
+							typedRanges = append(typedRanges,
+								&service.TypedMemoryRange{
+									Type: &path.Type{TypeIndex: id},
+									Range: &service.MemoryRange{
+										Base: rng.Base,
+										Size: rng.Size,
+									},
+									Root: root,
+								},
+							)
+						}
+					})
+					cmd.Mutate(ctx, id, backup_state, nil, nil)
+					backup_state.Memory.SetOnCreate(func(id memory.PoolID, pool *memory.Pool) {
+						pool.OnRead = nil
+						pool.OnWrite = nil
+					})
+					typedRanges.Filter()
+					comm.OnRequestReturn(ctx,
+						&service.StreamCommandsResponse{
+							Res: &service.StreamCommandsResponse_TypedRanges{
+								&service.TypedRangeResponse {
+									Ranges: typedRanges,
+								},
+							},
+						},
+					)
+
 				default:
 					panic(fmt.Sprintf("Unknown request %T %v", t, t))
 				}
 			}
 
+		}
+
+		if !readMemory {
+			cmd.Mutate(ctx, id, backup_state, nil, nil)
 		}
 		return cmd.Mutate(ctx, id, state, nil, nil)
 	}
