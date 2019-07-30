@@ -137,7 +137,8 @@ func Stream(
 		state = c.NewState(ctx)
 	}
 	backup_state := state.Clone(ctx)
-	
+	lastCmd := -1
+	curCmd := 0
 	doCmd := func(ctx context.Context, id api.CmdID, cmd api.Cmd) error {
 		process := req.PassDefault
 		typedRanges := service.TypedMemoryRanges{}
@@ -151,11 +152,11 @@ func Stream(
 			cmd.Extras().Observations().ApplyReads(backup_state.Memory.ApplicationPool())
 			cmd.Extras().Observations().ApplyWrites(backup_state.Memory.ApplicationPool())
 			
-			c, err := api.CmdToService(cmd)
+			csvc, err := api.CmdToService(cmd)
 			if err != nil {
 				return err
 			}
-			comm.OnCallback(ctx, c)
+			comm.OnCallback(ctx, csvc)
 
 		loop:
 			for {
@@ -196,6 +197,19 @@ func Stream(
 						continue
 					}
 					readMemory = true
+					// If our backup_state is behind, update it now.
+					// We do this because you may want to know all of the reads
+					// and writes, but NOT actually commit the command yet.
+					if lastCmd < curCmd {
+						for i := lastCmd + 1; i < curCmd; i++ {
+							if i < len(ic) {
+								ic[i].Mutate(ctx, id, backup_state, nil, nil)
+							} else {
+								c.Commands[i-len(ic)].Mutate(ctx, id, backup_state, nil, nil)
+							}
+						}
+					}
+					lastCmd = curCmd
 					backup_state.Memory.SetOnCreate(func(id memory.PoolID, pool *memory.Pool) {
 						pool.OnRead = func(rng memory.Range, root uint64, id uint64) {
 							typedRanges = append(typedRanges,
@@ -245,12 +259,10 @@ func Stream(
 
 		}
 
-		if !readMemory {
-			cmd.Mutate(ctx, id, backup_state, nil, nil)
-		}
+		curCmd++
 		return cmd.Mutate(ctx, id, state, nil, nil)
 	}
-
+	
 	if len(ic) > 0 {
 		err = api.ForeachCmd(ctx, ic, doCmd)
 		if err != nil {
