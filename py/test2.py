@@ -28,7 +28,7 @@ class Handler(object):
   
   def default(self, name, *args):
     self.i = self.i + 1
-    aa = self.ch.get_memory()
+    #aa = self.ch.get_memory()
     #print(aa)
     if self.i % 100 == 0:
       print("--- {}".format(self.i))
@@ -36,6 +36,9 @@ class Handler(object):
 if __name__ == '__main__':
   conn = gapis_connection(40000)
   h = Handler()
-  print("Start - {} ".format(timer()))
+  start = timer()
+  print("Start: {} ".format(start))
   conn.walk_trace(sys.argv[1], h)
-  print("End - {} ".format(timer()))
+  end = timer()
+  print("End: {} ".format(end))
+  print ("Total: {}".format(end - start))
