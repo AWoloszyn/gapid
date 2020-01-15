@@ -25,81 +25,83 @@ import (
 	"github.com/google/gapid/gapis/replay/builder"
 )
 
-// CommandBufferInsertionCommand is a temporary command
+// InsertionCommand is a temporary command
 // that is expected to be replaced by a down-stream transform.
-type CommandBufferInsertionCommand struct {
+type InsertionCommand struct {
 	cmdBuffer VkCommandBuffer
+	pendingCommandBuffers []VkCommandBuffer
 	idx       api.SubCmdIdx
 	callee    api.Cmd
 }
 
 // Interface check
-var _ api.Cmd = &CommandBufferInsertionCommand{}
+var _ api.Cmd = &InsertionCommand{}
 
-func (*CommandBufferInsertionCommand) Mutate(ctx context.Context, cmd api.CmdID, g *api.GlobalState, b *builder.Builder, w api.StateWatcher) error {
+func (*InsertionCommand) Mutate(ctx context.Context, cmd api.CmdID, g *api.GlobalState, b *builder.Builder, w api.StateWatcher) error {
 	if b != nil {
 		return fmt.Errorf("This command should have been replaced replaced before it got to the builder")
 	}
 	return nil
 }
 
-func (s *CommandBufferInsertionCommand) Caller() api.CmdID {
+func (s *InsertionCommand) Caller() api.CmdID {
 	return s.callee.Caller()
 }
 
-func (s *CommandBufferInsertionCommand) SetCaller(c api.CmdID) {
+func (s *InsertionCommand) SetCaller(c api.CmdID) {
 	s.callee.SetCaller(c)
 }
 
-func (s *CommandBufferInsertionCommand) Thread() uint64 {
+func (s *InsertionCommand) Thread() uint64 {
 	return s.callee.Thread()
 }
 
-func (s *CommandBufferInsertionCommand) SetThread(c uint64) {
+func (s *InsertionCommand) SetThread(c uint64) {
 	s.callee.SetThread(c)
 }
 
 // CmdName returns the name of the command.
-func (s *CommandBufferInsertionCommand) CmdName() string {
+func (s *InsertionCommand) CmdName() string {
 	return "CommandBufferInsertion"
 }
 
-func (s *CommandBufferInsertionCommand) CmdParams() api.Properties {
+func (s *InsertionCommand) CmdParams() api.Properties {
 	return api.Properties{}
 }
 
-func (s *CommandBufferInsertionCommand) CmdResult() *api.Property {
+func (s *InsertionCommand) CmdResult() *api.Property {
 	return nil
 }
 
-func (s *CommandBufferInsertionCommand) CmdFlags(context.Context, api.CmdID, *api.GlobalState) api.CmdFlags {
+func (s *InsertionCommand) CmdFlags(context.Context, api.CmdID, *api.GlobalState) api.CmdFlags {
 	return 0
 }
 
-func (s *CommandBufferInsertionCommand) Extras() *api.CmdExtras {
+func (s *InsertionCommand) Extras() *api.CmdExtras {
 	return nil
 }
 
-func (s *CommandBufferInsertionCommand) Clone(a arena.Arena) api.Cmd {
-	return &CommandBufferInsertionCommand{
+func (s *InsertionCommand) Clone(a arena.Arena) api.Cmd {
+	return &InsertionCommand{
 		s.cmdBuffer,
+		[]VkCommandBuffer{},
 		s.idx,
 		s.callee.Clone(a),
 	}
 }
 
-func (s *CommandBufferInsertionCommand) Alive() bool {
+func (s *InsertionCommand) Alive() bool {
 	return true
 }
 
-func (s *CommandBufferInsertionCommand) Terminated() bool {
+func (s *InsertionCommand) Terminated() bool {
 	return true
 }
 
-func (s *CommandBufferInsertionCommand) SetTerminated(bool) {
+func (s *InsertionCommand) SetTerminated(bool) {
 }
 
-func (s *CommandBufferInsertionCommand) API() api.API {
+func (s *InsertionCommand) API() api.API {
 	return s.callee.API()
 }
 
@@ -304,7 +306,6 @@ func (t *commandSplitter) splitRenderPass(ctx context.Context, rp RenderPassObje
 		}
 
 		{
-
 			rp1 := rp.Clone(arena, api.CloneContext{})
 			rp1.SetVulkanHandle(
 				VkRenderPass(newUnusedID(true, func(x uint64) bool {
@@ -506,16 +507,18 @@ func (t *commandSplitter) splitCommandBuffer(ctx context.Context, embedBuffer Vk
 				cbo := st.CommandBuffers().Get(ar.CommandBuffers().Get(uint32(j)))
 				t.splitCommandBuffer(ctx, embedBuffer, cbo, queueSubmit, append(id, uint64(i), uint64(j)), newSubCuts, out)
 				if splitAfterExecute {
-					t.WriteCommand(ctx, &CommandBufferInsertionCommand{
+					t.WriteCommand(ctx, &InsertionCommand{
 						VkCommandBuffer(0),
+						[]VkCommandBuffer{},
 						append(id, uint64(i), uint64(j)),
 						queueSubmit,
 					}, api.CmdID(id[0]), out)
 				}
 			}
 			if splitAfterCommand {
-				t.WriteCommand(ctx, &CommandBufferInsertionCommand{
+				t.WriteCommand(ctx, &InsertionCommand{
 					VkCommandBuffer(0),
+					[]VkCommandBuffer{},
 					append(id, uint64(i)),
 					queueSubmit,
 				}, api.CmdID(id[0]), out)
@@ -529,8 +532,9 @@ func (t *commandSplitter) splitCommandBuffer(ctx context.Context, embedBuffer Vk
 			if t.thisRenderPass != NilVkCmdBeginRenderPassArgsʳ {
 				extraArgs = append(extraArgs, NewVkCmdEndRenderPassArgsʳ(a))
 			}
-			extraArgs = append(extraArgs, &CommandBufferInsertionCommand{
+			extraArgs = append(extraArgs, &InsertionCommand{
 				VkCommandBuffer(0),
+				[]VkCommandBuffer{},
 				append(id, uint64(i)),
 				queueSubmit,
 			})
@@ -609,8 +613,9 @@ func (t *commandSplitter) splitSubmit(ctx context.Context, submit VkSubmitInfo, 
 		}
 		if splitAfterCommandBuffer {
 			commandBuffer := t.getStartedCommandBuffer(ctx, api.CmdID(idx[0]), queueSubmit, out)
-			out.MutateAndWrite(ctx, api.CmdID(idx[0]), &CommandBufferInsertionCommand{
+			out.MutateAndWrite(ctx, api.CmdID(idx[0]), &InsertionCommand{
 				VkCommandBuffer(0),
+				[]VkCommandBuffer{},
 				append(idx, uint64(i)),
 				queueSubmit,
 			})
@@ -633,8 +638,9 @@ func (t *commandSplitter) splitAfterSubmit(ctx context.Context, id api.SubCmdIdx
 	cb := CommandBuilder{Thread: queueSubmit.Thread(), Arena: a}
 
 	commandBuffer := t.getStartedCommandBuffer(ctx, api.CmdID(id[0]), queueSubmit, out)
-	out.MutateAndWrite(ctx, api.CmdID(id[0]), &CommandBufferInsertionCommand{
+	out.MutateAndWrite(ctx, api.CmdID(id[0]), &InsertionCommand{
 		VkCommandBuffer(0),
+		[]VkCommandBuffer{},
 		id,
 		queueSubmit,
 	})
@@ -723,8 +729,9 @@ func (t *commandSplitter) Transform(ctx context.Context, id api.CmdID, cmd api.C
 
 	if len(cuts) == 0 {
 		out.MutateAndWrite(ctx, id, cmd)
-		out.MutateAndWrite(ctx, id, &CommandBufferInsertionCommand{
+		out.MutateAndWrite(ctx, id, &InsertionCommand{
 			VkCommandBuffer(0),
+			[]VkCommandBuffer{},
 			topCut,
 			cmd,
 		})
@@ -744,8 +751,9 @@ func (t *commandSplitter) Transform(ctx context.Context, id api.CmdID, cmd api.C
 	if len(topCut) == 0 {
 		return
 	}
-	out.MutateAndWrite(ctx, id, &CommandBufferInsertionCommand{
+	out.MutateAndWrite(ctx, id, &InsertionCommand{
 		VkCommandBuffer(0),
+		[]VkCommandBuffer{},
 		topCut,
 		cmd,
 	})

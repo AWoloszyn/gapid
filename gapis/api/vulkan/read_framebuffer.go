@@ -32,7 +32,7 @@ import (
 )
 
 type readFramebuffer struct {
-	injections         map[api.CmdID][]func(context.Context, api.Cmd, transform.Writer)
+	injections         map[string][]func(context.Context, *CommandBufferInsertionCommand, transform.Writer)
 	numInitialCommands int
 }
 
@@ -46,29 +46,22 @@ func newReadFramebuffer(ctx context.Context) *readFramebuffer {
 // the framebuffer read.
 func (t *readFramebuffer) Transform(ctx context.Context, id api.CmdID, cmd api.Cmd, out transform.Writer) {
 	s := out.State()
-	isEOF := cmd.CmdFlags(ctx, id, s).IsEndOfFrame()
-	doMutate := func() {
-		out.MutateAndWrite(ctx, id, cmd)
-	}
-
-	if !isEOF {
-		doMutate()
-	} else {
-		// This is a VkQueuePresent, we need to extract the information out of this,
-		// so that we can correctly display the image.
-		cmd.Mutate(ctx, id, out.State(), nil, nil)
-	}
-
-	if r, ok := t.injections[id-api.CmdID(t.numInitialCommands)]; ok {
-		for _, injection := range r {
-			injection(ctx, cmd, out)
+	
+	if cmd, ok := cmd.(*CommandBufferInsertionCommand) {
+		idx_string := keyFromIndex(api.SubCmdIdx{uint64(id)})
+		if r, ok := t.injections[idx_string]; ok {
+			// If this command is FOR an EOF command, we want to mutate it, so that
+			// we have the presentation info available.
+			if cmd.callee != nil && cmd.callee.CmdFlags(ctx, id, s).IsEndOfFrame() {
+				cmd.callee.Mutate(ctx, id, out.State(), nil, nil)
+			}
+			for _, injection := range r {
+				injection(ctx, cmd, out)
+			}
+			return
 		}
-		delete(t.injections, id)
 	}
-
-	if isEOF {
-		doMutate()
-	}
+	out.MutateAndWrite(ctx, id, cmd)
 }
 
 func (t *readFramebuffer) Flush(ctx context.Context, out transform.Writer)       {}
@@ -76,11 +69,17 @@ func (t *readFramebuffer) PreLoop(ctx context.Context, output transform.Writer) 
 func (t *readFramebuffer) PostLoop(ctx context.Context, output transform.Writer) {}
 func (t *readFramebuffer) BuffersCommands() bool                                 { return false }
 
-func (t *readFramebuffer) Depth(id api.CmdID, idx uint32, res replay.Result) {
-	t.injections[id] = append(t.injections[id], func(ctx context.Context, cmd api.Cmd, out transform.Writer) {
-		s := out.State()
+func keyFromIndex(idx api.SubCmdIdx) string {
+	return fmt.Sprintf("%v", idx)
+}
 
-		c := GetState(s)
+func (t *readFramebuffer) Depth(id api.SubCmdIdx, idx uint32, res replay.Result) {
+	t.injections[keyFromIndex(id)] = append(t.injections[keyFromIndex(id)], 
+			func(ctx context.Context, cmd *CommandBufferInsertionCommand, out transform.Writer) {
+		s := out.State()
+		st := GetState(s)
+		
+		
 		lastQueue := c.LastBoundQueue()
 		if lastQueue.IsNil() {
 			res(nil, &service.ErrDataUnavailable{Reason: messages.ErrMessage("No previous queue submission")})
@@ -116,15 +115,20 @@ func (t *readFramebuffer) Depth(id api.CmdID, idx uint32, res replay.Result) {
 	})
 }
 
-func (t *readFramebuffer) Color(id api.CmdID, width, height, bufferIdx uint32, res replay.Result) {
-	t.injections[id] = append(t.injections[id], func(ctx context.Context, cmd api.Cmd, out transform.Writer) {
+func (t *readFramebuffer) Color(id api.SubCmdIdx, width, height, bufferIdx uint32, res replay.Result) {
+	t.injections[keyFromIndex(id)] = append(t.injections[keyFromIndex(id)], 
+			func(ctx context.Context, cmd *CommandBufferInsertionCommand, out transform.Writer) {
 		s := out.State()
 		c := GetState(s)
 
 		cb := CommandBuilder{Thread: cmd.Thread(), Arena: s.Arena}
 
+		is_present := cmd.callee != nil && cmd.callee.CmdFlags(ctx, id, s).IsEndOfFrame() {
+
 		// TODO: Figure out a better way to select the framebuffer here.
-		if GetState(s).LastSubmission() == LastSubmissionType_SUBMIT {
+		
+		if !is_present {
+			
 			lastQueue := c.LastBoundQueue()
 			if lastQueue.IsNil() {
 				res(nil, &service.ErrDataUnavailable{Reason: messages.ErrMessage("No previous queue submission")})
