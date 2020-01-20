@@ -429,7 +429,6 @@ func (t *VulkanTerminator) Transform(ctx context.Context, id api.CmdID, cmd api.
 			doCut = true
 		}
 	}
-
 	// We have to cut somewhere
 	if doCut {
 		cutCommandBuffer(ctx, id, cmd.(*VkQueueSubmit), cutIndex, out)
