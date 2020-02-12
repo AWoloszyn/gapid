@@ -390,7 +390,11 @@ func cutCommandBuffer(ctx context.Context, id api.CmdID,
 
 func (t *VulkanTerminator) Transform(ctx context.Context, id api.CmdID, cmd api.Cmd, out transform.Writer) error {
 	if t.stopped {
-		return nil
+		s := out.State()
+		c := GetState(s)
+		if len(c.deferredSubmissions) == 0 {
+			return nil
+		}
 	}
 
 	doCut := false

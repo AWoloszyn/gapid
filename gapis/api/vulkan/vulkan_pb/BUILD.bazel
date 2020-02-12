@@ -33,7 +33,7 @@ go_library(
 
 proto_library(
     name = "vulkan_pb_proto",
-    srcs = [":api_proto"],  # keep
+    srcs = ["extras.proto", ":api_proto"],  # keep
     visibility = ["//visibility:public"],
     deps = ["//gapis/memory/memory_pb:memory_pb_proto"],  # keep
 )
@@ -44,6 +44,12 @@ cc_proto_library(
     deps = [":vulkan_pb_proto"],
 )
 
+cc_proto_library(
+    name = "extras_cc_proto",
+    visibility = ["//visibility:public"],
+    deps = [":extras_proto"],
+)
+
 # keep
 go_proto_library(
     name = "vulkan_pb_go_proto",
@@ -51,4 +57,11 @@ go_proto_library(
     proto = ":vulkan_pb_proto",
     visibility = ["//visibility:public"],
     deps = ["//gapis/memory/memory_pb:go_default_library"],
+)
+
+proto_library(
+    name = "extras_proto",
+    srcs = ["extras.proto"],
+    visibility = ["//visibility:public"],
+    deps = ["//gapis/memory/memory_pb:memory_pb_proto"],  # keep
 )

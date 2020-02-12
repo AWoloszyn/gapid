@@ -904,3 +904,87 @@ func (i AllocationCallbacks) value(b *builder.Builder, cmd api.Cmd, s *api.Globa
 	// allocator.
 	return value.AbsolutePointer(0)
 }
+
+func (a *VkWaitSemaphores) Mutate(ctx context.Context, id api.CmdID, s *api.GlobalState, b *builder.Builder, w api.StateWatcher) error {
+	ss := findSemaphoreState(a.Extras())
+	if b == nil || ss == nil {
+		return a.mutate(ctx, id, s, b, w)
+	}
+	// Mutate so that the state block is correct
+	if err := a.mutate(ctx, id, s, nil, w); err != nil {
+		return err
+	}
+	cb := CommandBuilder{Thread: a.Thread(), Arena: s.Arena}
+
+	allocated := []*api.AllocResult{}
+	defer func() {
+		for _, d := range allocated {
+			d.Free()
+		}
+	}()
+
+	semaphoresData := s.AllocDataOrPanic(ctx, ss.semaphores)
+	allocated = append(allocated, &semaphoresData)
+	valuesData := s.AllocDataOrPanic(ctx, ss.values)
+	allocated = append(allocated, &valuesData)
+
+	return cb.ReplayWaitSemaphores(a.Device(),
+		uint64(len(ss.semaphores)),
+		NewVkSemaphoreᵖ(semaphoresData.Ptr()),
+		NewU64ᵖ(valuesData.Ptr()), a.Result()).Mutate(ctx, id, s, b, nil)
+}
+
+func (a *VkWaitSemaphoresKHR) Mutate(ctx context.Context, id api.CmdID, s *api.GlobalState, b *builder.Builder, w api.StateWatcher) error {
+	ss := findSemaphoreState(a.Extras())
+	if b == nil || ss == nil {
+		return a.mutate(ctx, id, s, b, w)
+	}
+	// Mutate so that the state block is correct
+	if err := a.mutate(ctx, id, s, nil, w); err != nil {
+		return err
+	}
+	cb := CommandBuilder{Thread: a.Thread(), Arena: s.Arena}
+
+	allocated := []*api.AllocResult{}
+	defer func() {
+		for _, d := range allocated {
+			d.Free()
+		}
+	}()
+
+	semaphoresData := s.AllocDataOrPanic(ctx, ss.semaphores)
+	allocated = append(allocated, &semaphoresData)
+	valuesData := s.AllocDataOrPanic(ctx, ss.values)
+	allocated = append(allocated, &valuesData)
+
+	return cb.ReplayWaitSemaphoresKHR(a.Device(),
+		uint64(len(ss.semaphores)),
+		NewVkSemaphoreᵖ(semaphoresData.Ptr()),
+		NewU64ᵖ(valuesData.Ptr()), a.Result()).Mutate(ctx, id, s, b, nil)
+}
+
+func (a *VkGetSemaphoreCounterValue) Mutate(ctx context.Context, id api.CmdID, s *api.GlobalState, b *builder.Builder, w api.StateWatcher) error {
+	if b == nil {
+		return a.mutate(ctx, id, s, b, w)
+	}
+	cb := CommandBuilder{Thread: a.Thread(), Arena: s.Arena}
+	l := s.MemoryLayout
+	a.Extras().Observations().ApplyReads(s.Memory.ApplicationPool())
+	a.Extras().Observations().ApplyWrites(s.Memory.ApplicationPool())
+	expectedValue := a.PValue().Slice(0, 1, l).MustRead(ctx, a, s, nil)[0]
+
+	return cb.ReplayGetSemaphoreCounterValue(a.Device(), a.Semaphore(), a.PValue(), expectedValue, a.Result()).Mutate(ctx, id, s, b, nil)
+}
+
+func (a *VkGetSemaphoreCounterValueKHR) Mutate(ctx context.Context, id api.CmdID, s *api.GlobalState, b *builder.Builder, w api.StateWatcher) error {
+	if b == nil {
+		return a.mutate(ctx, id, s, b, w)
+	}
+	cb := CommandBuilder{Thread: a.Thread(), Arena: s.Arena}
+	l := s.MemoryLayout
+	a.Extras().Observations().ApplyReads(s.Memory.ApplicationPool())
+	a.Extras().Observations().ApplyWrites(s.Memory.ApplicationPool())
+	expectedValue := a.PValue().Slice(0, 1, l).MustRead(ctx, a, s, nil)[0]
+
+	return cb.ReplayGetSemaphoreCounterValue(a.Device(), a.Semaphore(), a.PValue(), expectedValue, a.Result()).Mutate(ctx, id, s, b, nil)
+}

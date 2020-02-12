@@ -31,20 +31,19 @@ import (
 )
 
 type customState struct {
-	SubCmdIdx         api.SubCmdIdx
-	CurrentSubmission api.Cmd
-	PreSubcommand     func(interface{})
-	PostSubcommand    func(interface{})
-	AddCommand        func(interface{})
-	IsRebuilding      bool
-	pushMarkerGroup   func(name string, next bool, ty MarkerType)
-	popMarkerGroup    func(ty MarkerType)
-	queuedCommands    map[CommandReferenceʳ]QueuedCommand
-	initialCommands   map[VkCommandBuffer][]api.Cmd
+	SubCmdIdx           api.SubCmdIdx
+	LastSubCmdIdx       api.SubCmdIdx
+	PreSubcommand       func(interface{})
+	PostSubcommand      func(interface{})
+	AddCommand          func(interface{})
+	IsRebuilding        bool
+	pushMarkerGroup     func(name string, next bool, ty MarkerType)
+	popMarkerGroup      func(ty MarkerType)
+	initialCommands     map[VkCommandBuffer][]api.Cmd
+	deferredSubmissions map[Submissionʳ]api.SubCmdIdx
 }
 
 func (c *customState) init(s *State) {
-	c.queuedCommands = make(map[CommandReferenceʳ]QueuedCommand)
 	c.initialCommands = make(map[VkCommandBuffer][]api.Cmd)
 
 	for b, cb := range s.CommandBuffers().All() {

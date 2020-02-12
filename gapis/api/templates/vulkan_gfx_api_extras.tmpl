@@ -577,6 +577,111 @@ bool Vulkan::replayGetEventStatus(Stack* stack, bool pushReturn) {
     }
 }
 ¶
+bool Vulkan::replayGetSemaphoreCounterValue(Stack* stack, bool pushReturn) {
+   auto expected = stack->pop<uint64_t>();
+   auto pValue = stack->pop<uint64_t*>();
+   auto semaphore = stack->pop<uint64_t>();
+   auto device = static_cast<size_val>(stack->pop<size_val>());
+   if (stack->isValid()) {
+        GAPID_DEBUG("vkGetSemaphoreCountValue(%zu, %" PRIu64 ")", device, semaphore);
+        uint32_t return_value;
+        do {
+          return_value = mVkDeviceFunctionStubs[device].vkGetSemaphoreCounterValue(device, semaphore, pValue);
+        } while (*pValue < expected && (return_value == VK_SUCCESS));
+        if (pushReturn) {
+            stack->push(return_value);
+        }
+        return true;
+   }
+   else {
+        GAPID_WARNING("Error during calling function vkGetEventStatus");
+        return false;
+   }
+}
+¶
+bool Vulkan::replayGetSemaphoreCounterValueKHR(Stack* stack, bool pushReturn) {
+   auto expected = stack->pop<uint64_t>();
+   auto pValue = stack->pop<uint64_t*>();
+   auto semaphore = stack->pop<uint64_t>();
+   auto device = static_cast<size_val>(stack->pop<size_val>());
+   if (stack->isValid()) {
+        GAPID_DEBUG("vkGetSemaphoreCountValue(%zu, %" PRIu64 ")", device, semaphore);
+        uint32_t return_value;
+        do {
+          return_value = mVkDeviceFunctionStubs[device].vkGetSemaphoreCounterValueKHR(device, semaphore, pValue);
+        } while (*pValue < expected && (return_value == VK_SUCCESS));
+        if (pushReturn) {
+            stack->push(return_value);
+        }
+        return true;
+   }
+   else {
+        GAPID_WARNING("Error during calling function vkGetEventStatus");
+        return false;
+   }
+}
+¶
+bool Vulkan::replayWaitSemaphores(Stack* stack, bool pushReturn) {
+   auto expecteds = stack->pop<uint64_t*>();
+   auto semaphores = stack->pop<uint64_t*>();
+   auto count = stack->pop<uint32_t>();
+   auto device = static_cast<size_val>(stack->pop<size_val>());
+   if (stack->isValid()) {
+        GAPID_DEBUG("vkWaitSemaphores(%zu)", device);
+        
+        uint32_t return_value;
+        for (size_t i = 0; i < count; ++i) {
+          auto expected = expecteds[i];
+          uint64_t val = 0;
+          do {
+            return_value = mVkDeviceFunctionStubs[device].vkGetSemaphoreCounterValue(device, semaphores[i], &val);
+          } while (val < expected && (return_value == VK_SUCCESS));
+          if (return_value != VK_SUCCESS) {
+            break;
+          }
+        }
+
+        if (pushReturn) {
+            stack->push(return_value);
+        }
+        return true;
+   }
+   else {
+        GAPID_WARNING("Error during calling function vkGetEventStatus");
+        return false;
+   }
+}
+¶
+bool Vulkan::replayWaitSemaphoresKHR(Stack* stack, bool pushReturn) {
+   auto expecteds = stack->pop<uint64_t*>();
+   auto semaphores = stack->pop<uint64_t*>();
+   auto count = stack->pop<uint32_t>();
+   auto device = static_cast<size_val>(stack->pop<size_val>());
+   if (stack->isValid()) {
+        GAPID_DEBUG("vkWaitSemaphoresKHR(%zu)", device);
+        uint32_t return_value;
+        for (size_t i = 0; i < count; ++i) {
+          auto expected = expecteds[i];
+          uint64_t val = 0;
+          do {
+            return_value = mVkDeviceFunctionStubs[device].vkGetSemaphoreCounterValueKHR(device, semaphores[i], &val);
+          } while (val < expected && (return_value == VK_SUCCESS));
+          if (return_value != VK_SUCCESS) {
+            break;
+          }
+        }
+
+        if (pushReturn) {
+            stack->push(return_value);
+        }
+        return true;
+   }
+   else {
+        GAPID_WARNING("Error during calling function vkGetEventStatus");
+        return false;
+   }
+}
+¶
 bool Vulkan::replayEnumeratePhysicalDevices(Stack* stack, bool pushReturn) {
     auto physicalDeviceIDs = stack->pop<uint64_t*>();
     auto physicalDevices = stack->pop<VkPhysicalDevice*>();

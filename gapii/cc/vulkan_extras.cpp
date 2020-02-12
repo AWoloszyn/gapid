@@ -16,6 +16,7 @@
 #include <bitset>
 #include "gapii/cc/vulkan_layer_extras.h"
 #include "gapii/cc/vulkan_spy.h"
+#include "gapis/api/vulkan/vulkan_pb/extras.pb.h"
 
 #include <third_party/SPIRV-Reflect/spirv_reflect.h>
 
@@ -470,6 +471,9 @@ void VulkanSpy::recordEventSet(CallObserver*, VkEvent) {}
 void VulkanSpy::recordFenceSignal(CallObserver*, uint64_t) {}
 void VulkanSpy::recordFenceWait(CallObserver*, uint64_t) {}
 void VulkanSpy::recordFenceReset(CallObserver*, uint64_t) {}
+void VulkanSpy::recordSemaphoreSignal(CallObserver*, uint64_t, uint64_t) {}
+void VulkanSpy::recordSemaphoreWait(CallObserver*, uint64_t, uint64_t) {}
+
 void VulkanSpy::recordAcquireNextImage(CallObserver*, uint64_t, uint32_t) {}
 void VulkanSpy::recordPresentSwapchainImage(CallObserver*, uint64_t, uint32_t) {
 }
@@ -496,6 +500,9 @@ void VulkanSpy::leaveSubcontext(CallObserver*) {}
 void VulkanSpy::nextSubcontext(CallObserver*) {}
 void VulkanSpy::resetSubcontext(CallObserver*) {}
 void VulkanSpy::onPreSubcommand(CallObserver*, gapil::Ref<CommandReference>) {}
+void VulkanSpy::deferSubmit(CallObserver*, gapil::Ref<Submission>) {}
+void VulkanSpy::executeDeferredSubmit(CallObserver*, gapil::Ref<Submission>) {}
+void VulkanSpy::finishedExecuteDeferredSubmit(CallObserver*, gapil::Ref<Submission>) {}
 
 void VulkanSpy::onPostSubcommand(CallObserver*, gapil::Ref<CommandReference>) {}
 void VulkanSpy::onCommandAdded(CallObserver*, VkCommandBuffer) {}
@@ -995,4 +1002,25 @@ void VulkanSpy::walkImageSubRng(
     }
   }
 }
+
+void VulkanSpy::recordWaitedSemaphores(CallObserver* observer, 
+      VkDevice device, const VkSemaphoreWaitInfo* wait_info, bool isKHR) {
+  auto it = mImports.mVkDeviceFunctions.find(device);
+  
+  vulkan_pb::SemaphoreState state;
+
+  for (size_t i = 0; i < wait_info->msemaphoreCount; ++i) {
+    uint64_t value;
+    if (isKHR) {
+      it->second.vkGetSemaphoreCounterValueKHR(device, wait_info->mpSemaphores[i], &value);
+    } else {
+      it->second.vkGetSemaphoreCounterValue(device, wait_info->mpSemaphores[i], &value);
+    }
+    state.add_semaphores(wait_info->mpSemaphores[i]);
+    state.add_values(value);
+  }
+ 
+  observer->encode_message(&state);
+}
+
 }  // namespace gapii

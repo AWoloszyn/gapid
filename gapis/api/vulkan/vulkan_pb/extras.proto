@@ -12,15 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package vulkan implementes the API interface for the Vulkan graphics library.
+syntax = "proto3";
 
-package vulkan
+package vulkan_pb;
+option go_package = "github.com/google/gapid/gapis/api/vulkan/vulkan_pb";
 
-import (
-	"github.com/google/gapid/gapis/api"
-)
-
-type QueuedCommand struct {
-	submit          api.Cmd
-	submissionIndex []uint64
+message SemaphoreState {
+  repeated uint64 semaphores = 1;
+  repeated uint64 values = 2;
 }

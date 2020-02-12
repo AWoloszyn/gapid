@@ -108,6 +108,23 @@ func (e externs) onCommandAdded(buffer VkCommandBuffer) {
 	}
 }
 
+func (e externs) deferSubmit(ref Submissionʳ) {
+	o := GetState(e.s)
+	o.deferredSubmissions[ref] = append(api.SubCmdIdx{}, o.SubCmdIdx...)
+}
+
+func (e externs) executeDeferredSubmit(ref Submissionʳ) {
+	o := GetState(e.s)
+	o.LastSubCmdIdx = append(api.SubCmdIdx{}, o.SubCmdIdx...)
+	o.SubCmdIdx = append(api.SubCmdIdx{}, o.deferredSubmissions[ref]...)
+}
+
+func (e externs) finishedExecuteDeferredSubmit(ref Submissionʳ) {
+	o := GetState(e.s)
+	o.SubCmdIdx = append(api.SubCmdIdx{}, o.LastSubCmdIdx...)
+	delete(o.deferredSubmissions, ref)
+}
+
 func (e externs) enterSubcontext() {
 	o := GetState(e.s)
 	o.SubCmdIdx = append(o.SubCmdIdx, 0)
@@ -449,6 +466,13 @@ func (e externs) recordFenceReset(fence VkFence) {
 	if e.w != nil {
 		e.w.DropForwardDependency(e.ctx, fenceSignal(fence))
 	}
+}
+
+func (e externs) recordSemaphoreSignal(semaphore VkSemaphore, val uint64) {
+}
+func (e externs) recordSemaphoreWait(semaphore VkSemaphore, val uint64) {
+}
+func (e externs) recordWaitedSemaphores(device VkDevice, waitInfo VkSemaphoreWaitInfoᶜᵖ, isKHR bool) {
 }
 
 type eventSignal uint64
