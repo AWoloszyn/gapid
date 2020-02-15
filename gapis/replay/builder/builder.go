@@ -52,6 +52,11 @@ type marker struct {
 	cmd         uint64 // the command identifier
 }
 
+type stackWrite struct {
+	rng        memory.Range
+	resourceID id.ID
+}
+
 // NotificationReader reads a given copy of notification message received from
 // the replay virtual machine.
 type NotificationReader func(p gapir.Notification)
@@ -104,6 +109,7 @@ type Builder struct {
 	pendingThreadID     uint64
 	resources           []*gapir.ResourceInfo
 	reservedMemory      memory.RangeList // Reserved memory ranges for regular data.
+	stackMemory         memory.RangeList // Temporary memory that will only be used for this command
 	pointerMemory       memory.RangeList // Reserved memory ranges for the pointer table.
 	mappedMemory        MappedMemoryRangeList
 	instructions        []asm.Instruction
@@ -118,7 +124,7 @@ type Builder struct {
 	pendingLabel        uint64 // label passed to BeginCommand written
 	lastLabel           uint64 // label of last CommitCommand written
 	volatileSpace       uint64 // Amount of volatile space already used
-
+	stackWrites         []stackWrite
 	// Remappings is a map of a arbitrary keys to pointers. Typically, this is
 	// used as a map of observed values to values that are only known at replay
 	// execution time, such as driver generated handles.
@@ -157,6 +163,7 @@ func New(memoryLayout *device.MemoryLayout, dependent *Builder) *Builder {
 		resources:           []*gapir.ResourceInfo{},
 		reservedMemory:      memory.RangeList{},
 		pointerMemory:       memory.RangeList{},
+		stackMemory:         memory.RangeList{},
 		mappedMemory:        mappedMemory,
 		instructions:        []asm.Instruction{},
 		nextNotificationID:  InitialNextNotificationID,
@@ -171,6 +178,10 @@ func New(memoryLayout *device.MemoryLayout, dependent *Builder) *Builder {
 
 func (b *Builder) MemoryRanges() MappedMemoryRangeList {
 	return b.mappedMemory
+}
+
+func (b *Builder) IsInMappedMemory(p uint64) bool {
+	return interval.IndexOf(&b.mappedMemory, p) >= 0
 }
 
 func (b *Builder) pushStack(t protocol.Type) {
@@ -280,13 +291,41 @@ func (b *Builder) BeginCommand(cmdID, threadID uint64) {
 // CommitCommand should be called after emitting the commands to replay a single
 // command.
 // CommitCommand frees all temporary allocated memory and clears the stack.
-func (b *Builder) CommitCommand() {
+func (b *Builder) CommitCommand(ctx context.Context) {
 	if !b.inCmd {
 		panic("CommitCommand called without a call to BeginCommand")
 	}
 	b.lastLabel, b.pendingLabel = b.pendingLabel, 0
 	b.currentThreadID = b.pendingThreadID
 	b.inCmd = false
+
+	temporaryRanges := make([]uint64, len(b.stackMemory))
+	offs := uint64(0)
+	for i := range b.stackMemory {
+		temporaryRanges[i] = offs
+		offs += b.stackMemory[i].Size
+	}
+
+	temporaryBase := b.AllocateTemporaryMemory(offs)
+	for i := range temporaryRanges {
+		temporaryRanges[i] += uint64(temporaryBase.(value.TemporaryPointer))
+	}
+	if len(temporaryRanges) > 0 {
+		log.E(ctx, "fixing up temporary ranges %+d", len(temporaryRanges))
+	}
+
+	fixupTemporary := func(v value.Value) value.Value {
+		if p, ok := v.(*value.ObservedPointer); ok {
+			idx := interval.IndexOf(&b.stackMemory, uint64(*p))
+			if idx >= 0 {
+				np := uint64(*p) - b.stackMemory[idx].Base +
+					temporaryRanges[idx]
+				return value.TemporaryPointer(np)
+			}
+		}
+		return v
+	}
+	// The reset simply stops this from expanding forever
 	b.temp.reset()
 	pop := uint32(len(b.stack))
 	// Optimise the instructions.
@@ -316,6 +355,10 @@ func (b *Builder) CommitCommand() {
 	if pop > 0 {
 		b.instructions = append(b.instructions, asm.Pop{Count: pop})
 	}
+	for _, ins := range b.instructions[b.cmdStart:] {
+		ins.ForEachValue(fixupTemporary)
+	}
+	b.stackMemory = memory.RangeList{}
 	b.stack = b.stack[:0]
 }
 
@@ -343,6 +386,7 @@ func (b *Builder) RevertCommand(err error) {
 		}
 		b.instructions = b.instructions[:b.cmdStart]
 	}
+	b.stackMemory = memory.RangeList{}
 }
 
 // Buffer returns a pointer to a block of memory in holding the count number of
@@ -601,6 +645,10 @@ func (b *Builder) ReserveMemory(rng memory.Range) {
 	interval.Merge(&b.reservedMemory, rng.Span(), true)
 }
 
+func (b *Builder) ReserveStackMemory(rng memory.Range) {
+	interval.Merge(&b.stackMemory, rng.Span(), true)
+}
+
 // GetMappedTarget gets current mapped memory's target address pointer in the builder.
 // The input |ptr| is the start of the mapped memory range. Returns the target address
 // on success and error otherwise.
@@ -664,6 +712,11 @@ func (b *Builder) UnmapMemory(rng memory.Range) {
 // Write fills the memory range in capture address-space rng with the data
 // of resourceID.
 func (b *Builder) Write(rng memory.Range, resourceID id.ID) {
+	//bufferIdx := interval.IndexOf(l.stackMemory, uint64(rng.Base()))
+	//if bufferIndex >= 0 {
+	//	b.stackWrites = append(b.stackWrites, stackWrite{rng, resourceID})
+	//	return
+	//}
 	if rng.Size > 0 {
 		idx, found := b.resourceIDToIdx[resourceID]
 		if !found {

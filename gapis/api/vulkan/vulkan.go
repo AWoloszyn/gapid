@@ -24,6 +24,7 @@ import (
 	"github.com/google/gapid/gapis/api/sync"
 	"github.com/google/gapid/gapis/api/transform"
 	"github.com/google/gapid/gapis/capture"
+	"github.com/google/gapid/gapis/memory"
 	"github.com/google/gapid/gapis/messages"
 	"github.com/google/gapid/gapis/resolve"
 	"github.com/google/gapid/gapis/service"
@@ -41,6 +42,7 @@ type customState struct {
 	popMarkerGroup    func(ty MarkerType)
 	queuedCommands    map[CommandReferenceʳ]QueuedCommand
 	initialCommands   map[VkCommandBuffer][]api.Cmd
+	mappedRanges      []memory.Range
 }
 
 func (c *customState) init(s *State) {

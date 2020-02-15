@@ -72,7 +72,7 @@ bool MemoryManager::setVolatileMemory(uint32_t size) {
 
   mVolatileMemory = {&mMemory[0], size};
 
-  GAPID_DEBUG("Volatile range: [%p,%p]", mVolatileMemory.base,
+  GAPID_ERROR("Volatile range: [%p,%p]", mVolatileMemory.base,
               mVolatileMemory.base + mVolatileMemory.size - 1);
 
   return true;

@@ -67,6 +67,7 @@ func (e externs) mapMemory(handle VkDeviceMemory, value Voidᵖᵖ, slice memory
 			log.E(ctx, "mapBuffer extern called for unsupported command: %v", e.cmd)
 		}
 	}
+
 	if e.w != nil {
 		e.w.OpenForwardDependency(e.ctx, mappedMemory(handle))
 	}

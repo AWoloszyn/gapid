@@ -1261,6 +1261,14 @@ import (
     return s
   }
 
+  func (s {{$slice_ty}}) ReserveStackMemory(ϟctx context.Context, ϟc ϟapi.Cmd, ϟg *ϟapi.GlobalState, ϟb *builder.Builder) {{$slice_ty}} {
+    if ϟb != nil && s.Pool() == ϟmem.ApplicationPool {
+      rng := s.Range()
+      ϟb.ReserveStackMemory(ϟmem.Range{Base: s.Root(), Size: uint64(rng.End() - s.Root())})
+    }
+    return s
+  }
+
   // Index returns a sub-slice to the ith element in this {{$slice_ty}}.
   func (s {{$slice_ty}}) Index(i uint64) {{$slice_ty}} {
     return s.Slice(i, i+1)
@@ -2067,7 +2075,11 @@ import (
 {{define "ReadStructWithRemapping"}}
   {{AssertType $ "Class"}}
   {{if $.Fields}}
-    s.ReserveMemory(ϟctx, ϟc, ϟg, ϟb)
+    if !ϟb.IsInMappedMemory(s.Base()) {
+      s.ReserveStackMemory(ϟctx, ϟc, ϟg, ϟb)
+    } else {
+      s.ReserveMemory(ϟctx, ϟc, ϟg, ϟb)
+    }
     // Write out the entire structure, then over-write
     // any pointer fields.
     ϟb.Write(s.Range(), s.ResourceID(ϟctx, ϟg))
