@@ -125,6 +125,7 @@ type Builder struct {
 	lastLabel           uint64 // label of last CommitCommand written
 	volatileSpace       uint64 // Amount of volatile space already used
 	stackWrites         []stackWrite
+	nonStackWrites		uint64
 	// Remappings is a map of a arbitrary keys to pointers. Typically, this is
 	// used as a map of observed values to values that are only known at replay
 	// execution time, such as driver generated handles.
@@ -173,6 +174,7 @@ func New(memoryLayout *device.MemoryLayout, dependent *Builder) *Builder {
 		lastLabel:           ^uint64(0),
 		volatileSpace:       volatileSpace,
 		Remappings:          remappings,
+		stackWrites:		 []stackWrite{},
 	}
 }
 
@@ -311,9 +313,10 @@ func (b *Builder) CommitCommand(ctx context.Context) {
 		temporaryRanges[i] += uint64(temporaryBase.(value.TemporaryPointer))
 	}
 	if len(temporaryRanges) > 0 {
-		log.E(ctx, "fixing up temporary ranges %+d", len(temporaryRanges))
+		log.E(ctx, "fixing up temporary ranges %v writes %v normalWrites %v", len(temporaryRanges), len(b.stackWrites), b.nonStackWrites)
 	}
-
+	b.stackWrites = []stackWrite{}
+	b.nonStackWrites = 0
 	fixupTemporary := func(v value.Value) value.Value {
 		if p, ok := v.(*value.ObservedPointer); ok {
 			idx := interval.IndexOf(&b.stackMemory, uint64(*p))
@@ -712,11 +715,12 @@ func (b *Builder) UnmapMemory(rng memory.Range) {
 // Write fills the memory range in capture address-space rng with the data
 // of resourceID.
 func (b *Builder) Write(rng memory.Range, resourceID id.ID) {
-	//bufferIdx := interval.IndexOf(l.stackMemory, uint64(rng.Base()))
-	//if bufferIndex >= 0 {
-	//	b.stackWrites = append(b.stackWrites, stackWrite{rng, resourceID})
-	//	return
-	//}
+	bufferIdx := interval.IndexOf(&b.stackMemory, uint64(rng.Base))
+	if bufferIdx >= 0 {
+		b.stackWrites = append(b.stackWrites, stackWrite{rng, resourceID})
+	} else {
+		b.nonStackWrites++
+	}
 	if rng.Size > 0 {
 		idx, found := b.resourceIDToIdx[resourceID]
 		if !found {
