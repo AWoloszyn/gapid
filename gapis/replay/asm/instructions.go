@@ -469,3 +469,40 @@ func (a Wait) Encode(r value.PointerResolver, w binary.Writer) error {
 
 func (a Wait) ForEachValue(fn func(value.Value) value.Value) {
 }
+
+type RemapHandle struct {
+	DataType protocol.Type
+	Source   value.Pointer
+	Dest     value.Pointer
+}
+
+func (a RemapHandle) Encode(r value.PointerResolver, w binary.Writer) error {
+	l := Load{a.DataType, a.Source}
+
+	if err := l.Encode(r, w); err != nil {
+		return err
+	}
+	s := Store{a.Dest}
+	if err := s.Encode(r, w); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (a RemapHandle) ForEachValue(fn func(value.Value) value.Value) {
+	a.Source = fn(a.Source).(value.Pointer)
+	a.Dest = fn(a.Dest).(value.Pointer)
+}
+
+type RemapPointer struct {
+	DataType      protocol.Type
+	Dest          value.Pointer
+}
+
+func (a RemapPointer) Encode(r value.PointerResolver, w binary.Writer) error {
+	panic("This should have been optimized away befor being encoded")
+}
+
+func (a RemapPointer) ForEachValue(fn func(value.Value) value.Value) {
+	a.Dest = fn(a.Dest).(value.Pointer)
+}

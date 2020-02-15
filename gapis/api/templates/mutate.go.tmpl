@@ -65,15 +65,15 @@
     }
   }
 
-  func loadRemap(ϟb *builder.Builder, key interface{}, ty protocol.Type, val value.Value) {
+  func loadRemap(ϟb *builder.Builder, key interface{}, ty protocol.Type, val value.Value) value.Pointer {
     if ptr, found := ϟb.Remappings[key]; found {
-      ϟb.Load(ty, ptr)
+      return ptr
     } else {
       ptr = ϟb.AllocateMemory(uint64(ty.Size(ϟb.MemoryLayout().GetPointer().GetSize())))
       ϟb.Push(val) // We have an input to an unknown id, use the unmapped value.
-      ϟb.Clone(0)
       ϟb.Store(ptr)
       ϟb.Remappings[key] = ptr
+      return ptr
     }
   }
 
@@ -232,7 +232,8 @@
 
   {{if (GetAnnotation $.Type "replay_remap")}}
     if key, remap := {{$.Name}}.remap(ϟc, ϟg); remap {
-      loadRemap(ϟb, key, {{Template "Go.Replay.Type" $.Type}}, {{Template "Go.Replay.Value" "Type" $.Type "Name" $.Name}})
+      ptr := loadRemap(ϟb, key, {{Template "Go.Replay.Type" $.Type}}, {{Template "Go.Replay.Value" "Type" $.Type "Name" $.Name}})
+      ϟb.Load({{Template "Go.Replay.Type" $.Type}}, ptr)
     } else {
       ϟb.Push({{Template "Go.Replay.Value" "Type" $.Type "Name" $.Name}})
     }

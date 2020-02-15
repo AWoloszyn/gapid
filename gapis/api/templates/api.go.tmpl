@@ -1189,18 +1189,23 @@ import (
       {{else if IsClass ($s.To | Underlying)}}
         {{Template "ReadStructWithRemapping" $s.To}}
       {{else}}
-        s.ReserveMemory(ϟctx, ϟc, ϟg, ϟb)
+        if !ϟb.IsInMappedMemory(s.Base()) {
+          s.ReserveStackMemory(ϟctx, ϟc, ϟg, ϟb)
+        } else {
+          s.ReserveMemory(ϟctx, ϟc, ϟg, ϟb)
+        }
         {{if (GetAnnotation $s.To "replay_remap")}}
           {{/* Element type has explicitly stated it needs custom remapping */}}
           ptr, step, ϟd := value.ObservedPointer(s.Base()), value.ObservedPointer(s.ElementSize(ϟl)), s.Decoder(ϟctx, ϟg)
           for i, c := uint64(0), s.Count(); i < c; i++ {
             v := {{Template "Go.Decode" $s.To}}
             if key, remap := v.remap(ϟc, ϟg); remap {
-              loadRemap(ϟb, key, {{Template "Go.Replay.Type" $s.To}}, {{Template "Go.Replay.Value" "Type" $s.To "Name" "v"}})
+              dptr := loadRemap(ϟb, key, {{Template "Go.Replay.Type" $s.To}}, {{Template "Go.Replay.Value" "Type" $s.To "Name" "v"}})
+              ϟb.RemapHandle(dptr, ptr, {{Template "Go.Replay.Type" $s.To}})
             } else {
               ϟb.Push({{Template "Go.Replay.Value" "Type" $s.To "Name" "v"}})
+              ϟb.Store(ptr)
             }
-            ϟb.Store(ptr)
             ptr += step
           }
           panicOnError(ϟd.Error())
@@ -2118,8 +2123,8 @@ import (
           addr := value.ObservedPointer(s.Base() + ϟd.Offset())
           v := {{Template "Go.Decode" $f.Type}}
           if key, remap := v.remap(ϟc, ϟg); remap {
-            loadRemap(ϟb, key, {{Template "Go.Replay.Type" $f.Type}}, {{Template "Go.Replay.Value" "Type" $f.Type "Name" "v"}})
-            ϟb.Store(addr)
+            dptr := loadRemap(ϟb, key, {{Template "Go.Replay.Type" $f.Type}}, {{Template "Go.Replay.Value" "Type" $f.Type "Name" "v"}})
+            ϟb.RemapHandle(dptr, addr, {{Template "Go.Replay.Type" $f.Type}})
           }
         }
       {{else}}
