@@ -53,7 +53,7 @@ const (
 // An instruction can produce zero, one or many opcodes.
 type Instruction interface {
 	Encode(r value.PointerResolver, w binary.Writer) error
-	ForEachValue(func(value.Value) value.Value)
+	ForEachValue(func(value.Value) value.Value) Instruction
 }
 
 func encodePush(t protocol.Type, v uint64, w binary.Writer) error {
@@ -161,7 +161,8 @@ func (Nop) Encode(r value.PointerResolver, w binary.Writer) error {
 	return nil
 }
 
-func (Nop) ForEachValue(func(value.Value) value.Value) {
+func (a Nop) ForEachValue(func(value.Value) value.Value) Instruction {
+	return a
 }
 
 // Call is an Instruction to call a VM registered function.
@@ -182,7 +183,8 @@ func (a Call) Encode(r value.PointerResolver, w binary.Writer) error {
 	}.Encode(w)
 }
 
-func (a Call) ForEachValue(fn func(value.Value) value.Value) {
+func (a Call) ForEachValue(fn func(value.Value) value.Value) Instruction {
+	return a
 }
 
 // Push is an Instruction to push Value to the top of the VM stack.
@@ -198,8 +200,9 @@ func (a Push) Encode(r value.PointerResolver, w binary.Writer) error {
 	}
 }
 
-func (a Push) ForEachValue(fn func(value.Value) value.Value) {
+func (a Push) ForEachValue(fn func(value.Value) value.Value) Instruction {
 	a.Value = fn(a.Value)
+	return a
 }
 
 // Pop is an Instruction that discards Count values from the top of the VM
@@ -212,7 +215,8 @@ func (a Pop) Encode(r value.PointerResolver, w binary.Writer) error {
 	return opcode.Pop{Count: a.Count}.Encode(w)
 }
 
-func (a Pop) ForEachValue(func(value.Value) value.Value) {
+func (a Pop) ForEachValue(func(value.Value) value.Value) Instruction {
+	return a
 }
 
 // Copy is an Instruction that pops the target address and then the source
@@ -226,7 +230,8 @@ func (a Copy) Encode(r value.PointerResolver, w binary.Writer) error {
 	return opcode.Copy{Count: uint32(a.Count)}.Encode(w)
 }
 
-func (a Copy) ForEachValue(func(value.Value) value.Value) {
+func (a Copy) ForEachValue(func(value.Value) value.Value) Instruction {
+	return a
 }
 
 // Clone is an Instruction that makes a copy of the the n-th element from the
@@ -239,7 +244,8 @@ func (a Clone) Encode(r value.PointerResolver, w binary.Writer) error {
 	return opcode.Clone{Index: uint32(a.Index)}.Encode(w)
 }
 
-func (a Clone) ForEachValue(fn func(value.Value) value.Value) {
+func (a Clone) ForEachValue(fn func(value.Value) value.Value) Instruction {
+	return a
 }
 
 // Load is an Instruction that loads the value of type DataType from pointer
@@ -249,8 +255,9 @@ type Load struct {
 	Source   value.Pointer
 }
 
-func (a Load) ForEachValue(fn func(value.Value) value.Value) {
+func (a Load) ForEachValue(fn func(value.Value) value.Value) Instruction {
 	a.Source = fn(a.Source).(value.Pointer)
+	return a
 }
 
 func (a Load) Encode(r value.PointerResolver, w binary.Writer) error {
@@ -281,8 +288,9 @@ type Store struct {
 	Destination value.Pointer
 }
 
-func (a Store) ForEachValue(fn func(value.Value) value.Value) {
+func (a Store) ForEachValue(fn func(value.Value) value.Value) Instruction {
 	a.Destination = fn(a.Destination).(value.Pointer)
+	return a
 }
 
 func (a Store) Encode(r value.PointerResolver, w binary.Writer) error {
@@ -314,7 +322,8 @@ func (a Strcpy) Encode(r value.PointerResolver, w binary.Writer) error {
 	}.Encode(w)
 }
 
-func (a Strcpy) ForEachValue(fn func(value.Value) value.Value) {
+func (a Strcpy) ForEachValue(fn func(value.Value) value.Value) Instruction {
+	return a
 }
 
 // Resource is an Instruction that loads the resource with index Index of Size
@@ -324,8 +333,9 @@ type Resource struct {
 	Destination value.Pointer
 }
 
-func (a Resource) ForEachValue(fn func(value.Value) value.Value) {
+func (a Resource) ForEachValue(fn func(value.Value) value.Value) Instruction {
 	a.Destination = fn(a.Destination).(value.Pointer)
+	return a
 }
 
 func (a Resource) Encode(r value.PointerResolver, w binary.Writer) error {
@@ -346,8 +356,9 @@ type Post struct {
 	Size   uint64
 }
 
-func (a Post) ForEachValue(fn func(value.Value) value.Value) {
+func (a Post) ForEachValue(fn func(value.Value) value.Value) Instruction {
 	a.Source = fn(a.Source).(value.Pointer)
+	return a
 }
 
 func (a Post) Encode(r value.PointerResolver, w binary.Writer) error {
@@ -369,7 +380,8 @@ type Add struct {
 	Count uint32
 }
 
-func (a Add) ForEachValue(fn func(value.Value) value.Value) {
+func (a Add) ForEachValue(fn func(value.Value) value.Value) Instruction {
+	return a
 }
 
 func (a Add) Encode(r value.PointerResolver, w binary.Writer) error {
@@ -385,7 +397,8 @@ func (a Label) Encode(r value.PointerResolver, w binary.Writer) error {
 	return opcode.Label{Value: a.Value}.Encode(w)
 }
 
-func (a Label) ForEachValue(fn func(value.Value) value.Value) {
+func (a Label) ForEachValue(fn func(value.Value) value.Value) Instruction {
+	return a
 }
 
 // SwitchThread is an Instruction that changes execution to a different thread.
@@ -393,7 +406,8 @@ type SwitchThread struct {
 	Index uint32
 }
 
-func (a SwitchThread) ForEachValue(fn func(value.Value) value.Value) {
+func (a SwitchThread) ForEachValue(fn func(value.Value) value.Value) Instruction {
+	return a
 }
 
 func (a SwitchThread) Encode(r value.PointerResolver, w binary.Writer) error {
@@ -404,7 +418,8 @@ type JumpLabel struct {
 	Label uint32
 }
 
-func (a JumpLabel) ForEachValue(fn func(value.Value) value.Value) {
+func (a JumpLabel) ForEachValue(fn func(value.Value) value.Value) Instruction {
+	return a
 }
 
 func (a JumpLabel) Encode(r value.PointerResolver, w binary.Writer) error {
@@ -415,7 +430,8 @@ type JumpNZ struct {
 	Label uint32
 }
 
-func (a JumpNZ) ForEachValue(fn func(value.Value) value.Value) {
+func (a JumpNZ) ForEachValue(fn func(value.Value) value.Value) Instruction {
+	return a
 }
 
 func (a JumpNZ) Encode(r value.PointerResolver, w binary.Writer) error {
@@ -429,7 +445,8 @@ type JumpZ struct {
 func (a JumpZ) Encode(r value.PointerResolver, w binary.Writer) error {
 	return opcode.JumpZ{Label: a.Label}.Encode(w)
 }
-func (a JumpZ) ForEachValue(fn func(value.Value) value.Value) {
+func (a JumpZ) ForEachValue(fn func(value.Value) value.Value) Instruction {
+	return a
 }
 
 // Notification is an Instruction that sends Size bytes from Source to the server, with the ID returned as well.
@@ -439,8 +456,9 @@ type Notification struct {
 	Size   uint64
 }
 
-func (a Notification) ForEachValue(fn func(value.Value) value.Value) {
+func (a Notification) ForEachValue(fn func(value.Value) value.Value) Instruction {
 	a.Source = fn(a.Source).(value.Pointer)
+	return a
 }
 
 func (a Notification) Encode(r value.PointerResolver, w binary.Writer) error {
@@ -467,7 +485,8 @@ func (a Wait) Encode(r value.PointerResolver, w binary.Writer) error {
 	return opcode.Wait{ID: a.ID}.Encode(w)
 }
 
-func (a Wait) ForEachValue(fn func(value.Value) value.Value) {
+func (a Wait) ForEachValue(fn func(value.Value) value.Value) Instruction {
+	return a
 }
 
 type RemapHandle struct {
@@ -489,20 +508,22 @@ func (a RemapHandle) Encode(r value.PointerResolver, w binary.Writer) error {
 	return nil
 }
 
-func (a RemapHandle) ForEachValue(fn func(value.Value) value.Value) {
+func (a RemapHandle) ForEachValue(fn func(value.Value) value.Value) Instruction {
 	a.Source = fn(a.Source).(value.Pointer)
 	a.Dest = fn(a.Dest).(value.Pointer)
+	return a
 }
 
 type RemapPointer struct {
-	DataType      protocol.Type
-	Dest          value.Pointer
+	DataType protocol.Type
+	Dest     value.Pointer
 }
 
 func (a RemapPointer) Encode(r value.PointerResolver, w binary.Writer) error {
 	panic("This should have been optimized away befor being encoded")
 }
 
-func (a RemapPointer) ForEachValue(fn func(value.Value) value.Value) {
+func (a RemapPointer) ForEachValue(fn func(value.Value) value.Value) Instruction {
 	a.Dest = fn(a.Dest).(value.Pointer)
+	return a
 }

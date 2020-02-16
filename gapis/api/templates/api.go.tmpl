@@ -1172,6 +1172,11 @@ import (
       }
     }
     if ϟb != nil && s.Pool() == ϟmem.ApplicationPool {
+      if !ϟb.IsInMappedMemory(s.Base()) {
+        s.ReserveStackMemory(ϟctx, ϟc, ϟg, ϟb)
+      } else {
+        s.ReserveMemory(ϟctx, ϟc, ϟg, ϟb)
+      }
       {{if IsPointer ($s.To | Underlying)}}
         {{/* Pointers need remapping to replay addresses.
              Pointer sizes may vary between capture and replay.
@@ -1181,19 +1186,17 @@ import (
         ϟd, dst := s.Decoder(ϟctx, ϟg), value.PointerIndex(s.Base() / uint64(ϟl.GetPointer().GetSize()))
         for i, c := uint64(0), s.Count(); i < c; i++ {
           {{if (GetAnnotation $s.To "replay_remap")}}{{Error "Remappings of pointers not implemented"}}{{end}}
-          ptr := {{$el_ty}}(ϟd.Pointer()).value(ϟb, ϟc, ϟg)
-          ϟb.StorePointer(dst, ptr)
+          pp := {{$el_ty}}(ϟd.Pointer())
+          if pp != {{$el_ty}}(0) {
+            ptr := pp.value(ϟb, ϟc, ϟg)
+            ϟb.StorePointer(dst, ptr)
+          }
           dst++
         }
         panicOnError(ϟd.Error())
       {{else if IsClass ($s.To | Underlying)}}
         {{Template "ReadStructWithRemapping" $s.To}}
       {{else}}
-        if !ϟb.IsInMappedMemory(s.Base()) {
-          s.ReserveStackMemory(ϟctx, ϟc, ϟg, ϟb)
-        } else {
-          s.ReserveMemory(ϟctx, ϟc, ϟg, ϟb)
-        }
         {{if (GetAnnotation $s.To "replay_remap")}}
           {{/* Element type has explicitly stated it needs custom remapping */}}
           ptr, step, ϟd := value.ObservedPointer(s.Base()), value.ObservedPointer(s.ElementSize(ϟl)), s.Decoder(ϟctx, ϟg)
@@ -1234,7 +1237,11 @@ import (
       }
     }
     if ϟb != nil && s.Pool() == ϟmem.ApplicationPool {
-      ϟb.ReserveMemory(ϟmem.Range{Base: s.Root(), Size: uint64(s.Range().End() - s.Root())})
+      if !ϟb.IsInMappedMemory(s.Root()) {
+        ϟb.ReserveStackMemory(ϟmem.Range{Base: s.Root(), Size: uint64(s.Range().End() - s.Root())})
+      } else {
+        ϟb.ReserveMemory(ϟmem.Range{Base: s.Root(), Size: uint64(s.Range().End() - s.Root())})
+      }
       {{if (GetAnnotation $s.To "replay_remap")}}
         {{/* Element type has explicitly stated it needs custom remapping */}}
         size := s.ElementSize(ϟl)
@@ -2080,11 +2087,6 @@ import (
 {{define "ReadStructWithRemapping"}}
   {{AssertType $ "Class"}}
   {{if $.Fields}}
-    if !ϟb.IsInMappedMemory(s.Base()) {
-      s.ReserveStackMemory(ϟctx, ϟc, ϟg, ϟb)
-    } else {
-      s.ReserveMemory(ϟctx, ϟc, ϟg, ϟb)
-    }
     // Write out the entire structure, then over-write
     // any pointer fields.
     ϟb.Write(s.Range(), s.ResourceID(ϟctx, ϟg))
@@ -2110,8 +2112,11 @@ import (
       { // {{$.Name}}.{{$name}}
         ϟd.Align({{Template "Go.AlignOf" (TypeOf $f)}})
         addr := value.ObservedPointer(s.Base() + ϟd.Offset())
-        ϟb.Push({{Macro "Go.Type" $f}}(ϟd.Pointer()).value(ϟb, ϟc, ϟg))
-        ϟb.Store(addr)
+        pp := {{Macro "Go.Type" $f}}(ϟd.Pointer())
+        if pp != {{Macro "Go.Type" $f}}(0) {
+          ϟb.Push(pp.value(ϟb, ϟc, ϟg))
+          ϟb.Store(addr)
+        }
       }
     {{else if IsClass ($f.Type | Underlying)}}
       ϟd.Align({{Template "Go.AlignOf" (TypeOf $f)}})

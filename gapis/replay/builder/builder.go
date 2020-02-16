@@ -29,6 +29,7 @@ import (
 	"github.com/google/gapid/core/fault"
 	"github.com/google/gapid/core/log"
 	"github.com/google/gapid/core/math/interval"
+	"github.com/google/gapid/core/math/u64"
 	"github.com/google/gapid/core/os/device"
 	"github.com/google/gapid/gapir"
 	"github.com/google/gapid/gapis/config"
@@ -101,38 +102,38 @@ type Postback func(d binary.Reader, err error)
 // The builder has a number of methods for mutating the virtual machine stack,
 // invoking functions and posting back data.
 type Builder struct {
-	constantMemory      *constantEncoder
-	heap, temp          allocator
-	resourceIDToIdx     map[id.ID]uint32
-	threadIDToIdx       map[uint64]uint32
-	currentThreadID     uint64
-	pendingThreadID     uint64
-	resources           []*gapir.ResourceInfo
-	reservedMemory      memory.RangeList // Reserved memory ranges for regular data.
-	stackMemory         memory.RangeList // Temporary memory that will only be used for this command
-	pointerMemory       memory.RangeList // Reserved memory ranges for the pointer table.
-	mappedMemory        MappedMemoryRangeList
-	instructions        []asm.Instruction
-	decoders            []postBackDecoder
-	nextNotificationID  uint64
-	notificationReaders map[uint64]NotificationReader
-	fenceReadyCallbacks map[uint32]FenceReadyRequestCallback
-	stack               []stackItem
-	memoryLayout        *device.MemoryLayout
-	inCmd               bool   // true if between BeginCommand and CommitCommand/RevertCommand
-	cmdStart            int    // index of current commands's first instruction
-	pendingLabel        uint64 // label passed to BeginCommand written
-	lastLabel           uint64 // label of last CommitCommand written
-	volatileSpace       uint64 // Amount of volatile space already used
-	stackWrites         []stackWrite
-	nonStackWrites		uint64
-	totalStackWrites    uint64
-	totalNonStackWrites uint64
-	potentialStackWrites uint64
+	constantMemory           *constantEncoder
+	heap, temp               allocator
+	resourceIDToIdx          map[id.ID]uint32
+	threadIDToIdx            map[uint64]uint32
+	currentThreadID          uint64
+	pendingThreadID          uint64
+	resources                []*gapir.ResourceInfo
+	reservedMemory           memory.RangeList // Reserved memory ranges for regular data.
+	stackMemory              memory.RangeList // Temporary memory that will only be used for this command
+	pointerMemory            memory.RangeList // Reserved memory ranges for the pointer table.
+	mappedMemory             MappedMemoryRangeList
+	instructions             []asm.Instruction
+	decoders                 []postBackDecoder
+	nextNotificationID       uint64
+	notificationReaders      map[uint64]NotificationReader
+	fenceReadyCallbacks      map[uint32]FenceReadyRequestCallback
+	stack                    []stackItem
+	memoryLayout             *device.MemoryLayout
+	inCmd                    bool   // true if between BeginCommand and CommitCommand/RevertCommand
+	cmdStart                 int    // index of current commands's first instruction
+	pendingLabel             uint64 // label passed to BeginCommand written
+	lastLabel                uint64 // label of last CommitCommand written
+	volatileSpace            uint64 // Amount of volatile space already used
+	stackWrites              []stackWrite
+	nonStackWrites           uint64
+	totalStackWrites         uint64
+	totalNonStackWrites      uint64
+	potentialStackWrites     uint64
 	potentialInstructionSize uint64
-	resourceBytesSaved uint64
-	resourcesSaved uint64
-	totalResourceBytes uint64
+	resourceBytesSaved       uint64
+	resourcesSaved           uint64
+	totalResourceBytes       uint64
 	// Remappings is a map of a arbitrary keys to pointers. Typically, this is
 	// used as a map of observed values to values that are only known at replay
 	// execution time, such as driver generated handles.
@@ -181,7 +182,7 @@ func New(memoryLayout *device.MemoryLayout, dependent *Builder) *Builder {
 		lastLabel:           ^uint64(0),
 		volatileSpace:       volatileSpace,
 		Remappings:          remappings,
-		stackWrites:		 []stackWrite{},
+		stackWrites:         []stackWrite{},
 	}
 }
 
@@ -311,10 +312,12 @@ func (b *Builder) CommitCommand(ctx context.Context) {
 	stackWrites := append([]stackWrite{}, b.stackWrites...)
 
 	temporaryRanges := make([]uint64, len(b.stackMemory))
+	stackMemory := append(memory.RangeList{}, b.stackMemory...)
 	offs := uint64(0)
 	for i := range b.stackMemory {
 		temporaryRanges[i] = offs
 		offs += b.stackMemory[i].Size
+		offs = u64.AlignUp(offs, 8)
 	}
 	b.potentialInstructionSize += offs
 
@@ -324,11 +327,21 @@ func (b *Builder) CommitCommand(ctx context.Context) {
 	}
 
 	fixupTemporary := func(v value.Value) value.Value {
-		if p, ok := v.(*value.ObservedPointer); ok {
-			idx := interval.IndexOf(&b.stackMemory, uint64(*p))
+		if p, ok := v.(value.ObservedPointer); ok {
+			idx := interval.IndexOf(&b.stackMemory, uint64(p))
 			if idx >= 0 {
-				np := uint64(*p) - b.stackMemory[idx].Base +
+				np := uint64(p) - b.stackMemory[idx].Base +
 					temporaryRanges[idx]
+				log.D(ctx, "Words %+v", np)
+				return value.TemporaryPointer(np)
+			}
+		} else if p, ok := v.(value.PointerIndex); ok {
+			addr := uint64(p) * uint64(b.memoryLayout.GetPointer().GetSize())
+			idx := interval.IndexOf(&b.stackMemory, addr)
+			if idx >= 0 {
+				np := addr - b.stackMemory[idx].Base +
+					temporaryRanges[idx]
+				log.D(ctx, "Words %+v", np)
 				return value.TemporaryPointer(np)
 			}
 		}
@@ -366,10 +379,10 @@ func (b *Builder) CommitCommand(ctx context.Context) {
 		b.instructions = append(b.instructions, asm.Pop{Count: pop})
 	}
 
-	for _, ins := range b.instructions[b.cmdStart:] {
-		ins.ForEachValue(fixupTemporary)
+	for i, ins := range b.instructions[b.cmdStart:] {
+		b.instructions[b.cmdStart+i] = ins.ForEachValue(fixupTemporary)
 	}
-	
+
 	prependInstructions := []asm.Instruction{}
 	// We want to insert some extra instructions here, specifically
 	// 1) Adding all temporary resource functions to the front.
@@ -377,7 +390,7 @@ func (b *Builder) CommitCommand(ctx context.Context) {
 	if len(stackWrites) == 1 {
 		sw := stackWrites[0]
 		bufferIdx := interval.IndexOf(&b.stackMemory, uint64(sw.rng.Base))
-		if (bufferIdx < 0) {
+		if bufferIdx < 0 {
 			panic("Invalid buffer Index")
 		}
 		stm := b.stackMemory[bufferIdx]
@@ -392,20 +405,22 @@ func (b *Builder) CommitCommand(ctx context.Context) {
 				Size: uint32(sw.rng.Size),
 			})
 		}
+		off = temporaryRanges[bufferIdx] + off
 		prependInstructions = append(prependInstructions, asm.Resource{
 			Index:       idx,
 			Destination: value.TemporaryPointer(uint64(temporaryBase.(value.TemporaryPointer)) + off),
 		})
 	} else if len(stackWrites) > 1 {
+
 		id, err := database.Store(ctx, func() ([]byte, error) {
 			dat := make([]byte, offs)
-			for i := 0; i < len(b.stackWrites); i++ {
-				sw := b.stackWrites[i]
-				bufferIdx := interval.IndexOf(&b.stackMemory, uint64(sw.rng.Base))
-				if (bufferIdx < 0) {
+			for i := 0; i < len(stackWrites); i++ {
+				sw := stackWrites[i]
+				bufferIdx := interval.IndexOf(&stackMemory, uint64(sw.rng.Base))
+				if bufferIdx < 0 {
 					panic("Invalid buffer Index")
 				}
-				stm := b.stackMemory[bufferIdx]
+				stm := stackMemory[bufferIdx]
 				off := sw.rng.Base - stm.Base
 				obj, err := database.Resolve(ctx, sw.resourceID)
 				if err != nil {
@@ -421,7 +436,7 @@ func (b *Builder) CommitCommand(ctx context.Context) {
 			return dat, nil
 		})
 		if err != nil {
-			panic(log.Err(ctx,  ErrInvalidResource, "Could not resolve bytes"))
+			panic(log.Err(ctx, ErrInvalidResource, "Could not resolve bytes"))
 		}
 		idx, found := b.resourceIDToIdx[id]
 		if !found {
@@ -437,14 +452,14 @@ func (b *Builder) CommitCommand(ctx context.Context) {
 			Destination: temporaryBase,
 		})
 	}
-	if (len(prependInstructions) > 0) {
-		ni := make([]asm.Instruction, len(b.instructions) - b.cmdStart)
+	if len(prependInstructions) > 0 {
+		ni := make([]asm.Instruction, len(b.instructions)-b.cmdStart)
 		copy(ni, b.instructions[b.cmdStart:])
 		b.instructions = b.instructions[0:b.cmdStart]
 		b.instructions = append(b.instructions, prependInstructions...)
 		b.instructions = append(b.instructions, ni...)
 	}
-	
+
 	b.nonStackWrites = 0
 	b.stackWrites = []stackWrite{}
 	b.stackMemory = memory.RangeList{}
@@ -646,8 +661,8 @@ func (b *Builder) Post(addr value.Pointer, size uint64, p Postback) {
 func (b *Builder) RemapHandle(hnd value.Pointer, loc value.Pointer, ty protocol.Type) {
 	b.instructions = append(b.instructions, asm.RemapHandle{
 		DataType: ty,
-		Source: hnd,
-		Dest: loc,
+		Source:   hnd,
+		Dest:     loc,
 	})
 }
 
@@ -815,7 +830,7 @@ func (b *Builder) Write(rng memory.Range, resourceID id.ID) {
 		if bufferIdx >= 0 {
 			b.stackWrites = append(b.stackWrites, stackWrite{rng, resourceID})
 			return
-		} 
+		}
 		bi := interval.IndexOf(&b.mappedMemory, uint64(rng.Base))
 		if bi < 0 {
 			panic("Write to memory that is neither mapped or on the stack?")
@@ -949,24 +964,24 @@ func (b *Builder) Build(ctx context.Context) (gapir.Payload, PostDataHandler, No
 	b.volatileSpace += vml.size
 
 	//if config.DebugReplayBuilder {
-		log.E(ctx, "----------------------------------")
-		log.E(ctx, "Stack size:           0x%x", payload.StackSize)
-		log.E(ctx, "Volatile memory size: 0x%x", payload.VolatileMemorySize)
-		log.E(ctx, "Constant memory size: 0x%x", len(payload.Constants))
-		log.E(ctx, "Opcodes size:         0x%x", len(payload.Opcodes))
-		log.E(ctx, "Resource count:         %d", len(payload.Resources))
-		log.E(ctx, "Decoder count:         %d", len(b.decoders))
-		log.E(ctx, "Readers count:         %d", len(b.notificationReaders))
-		log.E(ctx, "----------------------------------")
-		log.E(ctx, "Total Stack Writes:    %d", b.totalStackWrites)
-		log.E(ctx, "Total NonStack Writes: %d", b.totalNonStackWrites)
-		log.E(ctx, "Potential Stack Writes: %d", b.potentialStackWrites)
-		log.E(ctx, "Potential Instruction Increase: %d", b.potentialInstructionSize)
-		log.E(ctx, "Resource Bytes Saved %d", b.resourceBytesSaved)
-		log.E(ctx, "Resources Saved %d", b.resourcesSaved)
-		log.E(ctx, "Total Resource Size %d", b.totalResourceBytes)
-		
-		//}
+	log.E(ctx, "----------------------------------")
+	log.E(ctx, "Stack size:           0x%x", payload.StackSize)
+	log.E(ctx, "Volatile memory size: 0x%x", payload.VolatileMemorySize)
+	log.E(ctx, "Constant memory size: 0x%x", len(payload.Constants))
+	log.E(ctx, "Opcodes size:         0x%x", len(payload.Opcodes))
+	log.E(ctx, "Resource count:         %d", len(payload.Resources))
+	log.E(ctx, "Decoder count:         %d", len(b.decoders))
+	log.E(ctx, "Readers count:         %d", len(b.notificationReaders))
+	log.E(ctx, "----------------------------------")
+	log.E(ctx, "Total Stack Writes:    %d", b.totalStackWrites)
+	log.E(ctx, "Total NonStack Writes: %d", b.totalNonStackWrites)
+	log.E(ctx, "Potential Stack Writes: %d", b.potentialStackWrites)
+	log.E(ctx, "Potential Instruction Increase: %d", b.potentialInstructionSize)
+	log.E(ctx, "Resource Bytes Saved %d", b.resourceBytesSaved)
+	log.E(ctx, "Resources Saved %d", b.resourcesSaved)
+	log.E(ctx, "Total Resource Size %d", b.totalResourceBytes)
+
+	//}
 
 	// Make a copy of the reference of the finished decoder list to cut off the
 	// connection between the builder and furture uses of the decoders so that
