@@ -363,6 +363,17 @@ void Map<K, V, DENSE>::Allocation::clear_for_delete() {
 template<typename K, typename V, bool DENSE>
 void Map<K, V, DENSE>::Allocation::clear_keep() {
     auto elems = els();
+    if (DENSE && std::is_trivially_destructible<K>::value && 
+        std::is_trivially_destructible<V>::value) {
+        for (uint64_t i = 0; i < capacity && count > 0; ++i) {
+            if (elems[i].used == GAPIL_MAP_ELEMENT_FULL) {
+                --count;
+            }
+            elems[i].used = GAPIL_MAP_ELEMENT_EMPTY;
+        }
+        count = 0;
+        return;
+    }
     for (uint64_t i = 0; i < capacity && count > 0; ++i) {
         switch(elems[i].used) {
             case GAPIL_MAP_ELEMENT_EMPTY:

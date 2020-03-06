@@ -28,7 +28,7 @@ Ref<T>::Ref() : ptr(nullptr) {}
 template<typename T>
 Ref<T>::Ref(const Ref<T>& s) {
     ptr = s.ptr;
-    if (ptr != nullptr) {
+    if (likely(ptr != nullptr) ){
         ptr->ref_count++;
     }
 }
@@ -44,7 +44,7 @@ Ref<T>::Ref(Ref<T>&& s) {
 
 template<typename T>
 Ref<T>::~Ref() {
-    if (ptr != nullptr) {
+    if (unlikely(ptr != nullptr)) {
         ptr->release();
     }
 }
@@ -83,7 +83,7 @@ T* Ref<T>::get() const {
 
 template<typename T>
 T* Ref<T>::operator->() const {
-    return get();
+    return &ptr->object;
 }
 
 template<typename T>
