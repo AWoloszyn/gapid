@@ -126,49 +126,22 @@
 
 {{/*
 -------------------------------------------------------------------------------
-  Emits a validity check for an indirected function pointer.
+  Declares a variable (fn) that points to an indirected function
 -------------------------------------------------------------------------------
 */}}
 {{define "GetIndirectedFunction"}}
   {{AssertType $.Element    "string"      }}
   {{AssertType $.Function   "string"      }}
   {{$annotation := print (index $.Annotations 0)}}
-  {{if eq (len $.Annotations) 1}}
     {{$function_class := Title $annotation}}
-    mImports.m{{$function_class}}Functions.find({{$.Element}}) == mImports.m{{$function_class}}Functions.end() ||
-    mImports.m{{$function_class}}Functions[{{$.Element}}].{{$.Function}} == nullptr
+  {{if eq (len $.Annotations) 1}}
+    auto it = mImports.m{{$function_class}}Functions.find({{$.Element}});
+    auto fn = (it != mImports.m{{$function_class}}Functions.end())? it->second.{{$.Function}}: nullptr;
   {{else}}
-    {{$next_annotation := print (index $.Annotations 1)}}
-    {{$from_class := $annotation}}
-    {{$to_class := $next_annotation}}
-    mState.{{Template "RemoveUpperPrefix" (print $from_class)}}s.find({{$.Element}}) == mState.{{Template "RemoveUpperPrefix" (print $from_class)}}s.end() ||
-    {{$next_elements := Macro "ConcatenateImports" "FromClass" $from_class "ToClass" $to_class "Element" $.Element}}
-    {{Template "GetIndirectedFunction" "Annotations" (Tail 1 $.Annotations) "Element" (print $next_elements) "Function" $.Function}}
+    auto it = m{{$function_class}}Functions.find({{$.Element}});
+    auto fn = (it != m{{$function_class}}Functions.end())? it->second->{{$.Function}}: nullptr;
   {{end}}
 {{end}}
-
-
-{{/*
--------------------------------------------------------------------------------
-  Emits a reference to a function pointer to an indirected function.
--------------------------------------------------------------------------------
-*/}}
-{{define "GetIndirectedCall"}}
-  {{AssertType $.Element    "string"      }}
-  {{AssertType $.Function   "string"      }}
-  {{$annotation := index $.Annotations 0}}
-  {{if eq (len $.Annotations) 1}}
-    {{$function_class := Title $annotation}}
-    mImports.m{{$function_class}}Functions[{{$.Element}}].{{$.Function}}
-  {{else}}
-    {{$next_annotation := index $.Annotations 1}}
-    {{$from_class := Title $annotation}}
-    {{$to_class := Title $next_annotation}}
-    {{$next_elements := Macro "ConcatenateImports" "FromClass" (print $from_class) "ToClass" (print $to_class) "Element" $.Element}}
-    {{Template "GetIndirectedCall" "Annotations" (Tail 1 $.Annotations) "Element" (print $next_elements) "Function" $.Function}}
-  {{end}}
-{{end}}
-
 
 {{/*
 -------------------------------------------------------------------------------
@@ -187,16 +160,18 @@
       GAPID_DEBUG({{Template "C++.PrintfCommandCall" $}});
 ¶
       {{if (and (not (GetAnnotation $ "synthetic")) (not (GetAnnotation $ "override")))}}
-        if (§
-        {{if (GetAnnotation $ "indirect")}}
-          {{Template "GetIndirectedFunction" "Annotations" (GetAnnotation $ "indirect").Arguments "Element" ((index $.CallParameters 0).Name) "Function" (Macro "CmdName" $)}}
-        {{else}}
-          mImports.{{$name}} == nullptr
-        {{end}}
-          §) {
+
+      {{if (GetAnnotation $ "indirect")}}
+        {{Template "GetIndirectedFunction" "Annotations" (GetAnnotation $ "indirect").Arguments "Element" ((index $.CallParameters 0).Name) "Function" (Macro "CmdName" $)}};
+      {{else}}
+        auto fn = mImports.{{$name}};
+      {{end}}
+      if (!fn) {
           GAPID_ERROR("Application called unsupported function {{$name}}");
           return {{if not (IsVoid $retTy)}}{{Template "C++.NullArgument" $retTy}}{{end}};
         }¶
+      {{else}}
+      void* fn = nullptr;
       {{end}}
 
       observer->enter(cmd::{{.Name}}{§
@@ -215,7 +190,7 @@
       {{end}}
 
       bool called = false;
-      auto call = [{{Macro "CallCapture" $}}] {
+      auto call = [{{Macro "CallCapture" $}}, fn] {
         called = true;
         {{if GetAnnotation $ "frame_start"}}
           onPreStartOfFrame(observer, {{Global "ApiIndex"}});
@@ -237,10 +212,8 @@
           {{if not (IsVoid $.Return.Type)}}result = §{{end}}
           {{if (GetAnnotation $ "override")}}
             SpyOverride_{{Template "CmdName" $}}(observer, {{Template "C++.CallArguments" $}});
-          {{else if (GetAnnotation $ "indirect")}}
-            {{Template "GetIndirectedCall" "Annotations" (GetAnnotation $ "indirect").Arguments "Element" ((index $.CallParameters 0).Name) "Function" (Macro "CmdName" $)}}({{Template "C++.CallArguments" $}});
           {{else}}
-            mImports.{{Template "CmdName" $}}({{Template "C++.CallArguments" $}});
+            fn({{Template "C++.CallArguments" $}});
           {{end}}
         {{end}}
         {{if (GetAnnotation $ "threadsafe")}}

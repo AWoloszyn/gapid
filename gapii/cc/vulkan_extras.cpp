@@ -779,6 +779,76 @@ uint32_t VulkanSpy::SpyOverride_vkEnumeratePhysicalDeviceGroupsKHR(
   return ret;
 }
 
+uint32_t VulkanSpy::SpyOverride_vkAllocateCommandBuffers(
+    CallObserver*, VkDevice device,
+    const VkCommandBufferAllocateInfo* pAllocateInfo,
+    VkCommandBuffer* pCommandBuffers) {
+  auto it = mImports.mVkDeviceFunctions.find(device);
+  gapii::VulkanImports::PFNVKALLOCATECOMMANDBUFFERS allocate_command_buffers =
+      it == mImports.mVkDeviceFunctions.end()
+          ? nullptr
+          : it->second.vkAllocateCommandBuffers;
+  if (!allocate_command_buffers) {
+    return -1;
+  }
+  auto ret = allocate_command_buffers(device, pAllocateInfo, pCommandBuffers);
+
+  for (size_t i = 0; i < pAllocateInfo->mcommandBufferCount; ++i) {
+    mVkCommandBufferFunctions[pCommandBuffers[i]] = &(it->second);
+  }
+  return ret;
+}
+
+void VulkanSpy::SpyOverride_vkGetDeviceQueue(CallObserver*, VkDevice device,
+                                             uint32_t queueFamilyIndex,
+                                             uint32_t queueIndex,
+                                             VkQueue* pQueue) {
+  auto it = mImports.mVkDeviceFunctions.find(device);
+  gapii::VulkanImports::PFNVKGETDEVICEQUEUE get_device_queue =
+      it == mImports.mVkDeviceFunctions.end() ? nullptr
+                                              : it->second.vkGetDeviceQueue;
+  if (!get_device_queue) {
+    return;
+  }
+  get_device_queue(device, queueFamilyIndex, queueIndex, pQueue);
+  mVkQueueFunctions[*pQueue] = &(it->second);
+}
+
+void VulkanSpy::SpyOverride_vkGetDeviceQueue2(
+    CallObserver*, VkDevice device, const VkDeviceQueueInfo2* pQueueInfo,
+    VkQueue* pQueue) {
+  auto it = mImports.mVkDeviceFunctions.find(device);
+  gapii::VulkanImports::PFNVKGETDEVICEQUEUE2 get_device_queue2 =
+      it == mImports.mVkDeviceFunctions.end() ? nullptr
+                                              : it->second.vkGetDeviceQueue2;
+  if (!get_device_queue2) {
+    return;
+  }
+  get_device_queue2(device, pQueueInfo, pQueue);
+  mVkQueueFunctions[*pQueue] = &(it->second);
+}
+
+uint32_t VulkanSpy::SpyOverride_vkEnumeratePhysicalDevices(
+    CallObserver*, VkInstance instance, uint32_t* pPhysicalDeviceCount,
+    VkPhysicalDevice* pPhysicalDevices) {
+  auto it = mImports.mVkInstanceFunctions.find(instance);
+  gapii::VulkanImports::PFNVKENUMERATEPHYSICALDEVICES
+      enumerate_physical_devices = it == mImports.mVkInstanceFunctions.end()
+                                       ? nullptr
+                                       : it->second.vkEnumeratePhysicalDevices;
+  if (!enumerate_physical_devices) {
+    return -1;
+  }
+  auto ret = enumerate_physical_devices(instance, pPhysicalDeviceCount,
+                                        pPhysicalDevices);
+  if (pPhysicalDevices != nullptr) {
+    for (size_t i = 0; i < *pPhysicalDeviceCount; ++i) {
+      mVkPhysicalDeviceFunctions[pPhysicalDevices[i]] = &(it->second);
+    }
+  }
+  return ret;
+}
+
 uint32_t VulkanSpy::SpyOverride_vkEnumerateDeviceExtensionProperties(
     CallObserver*, VkPhysicalDevice physicalDevice, const char* pLayerName,
     uint32_t* pCount, VkExtensionProperties* pProperties) {

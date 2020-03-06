@@ -21,7 +21,15 @@
 // class VulkanSpy {
 // public:
 
-PFN_vkVoidFunction SpyOverride_vkGetInstanceProcAddr(CallObserver*, VkInstance instance,
+std::unordered_map<VkPhysicalDevice, VulkanImports::VkInstanceFunctions*>
+    mVkPhysicalDeviceFunctions;
+std::unordered_map<VkQueue, VulkanImports::VkDeviceFunctions*>
+    mVkQueueFunctions;
+std::unordered_map<VkCommandBuffer, VulkanImports::VkDeviceFunctions*>
+    mVkCommandBufferFunctions;
+
+PFN_vkVoidFunction SpyOverride_vkGetInstanceProcAddr(CallObserver*,
+                                                     VkInstance instance,
                                                      const char* pName);
 PFN_vkVoidFunction SpyOverride_vkGetDeviceProcAddr(CallObserver*, VkDevice device,
                                                    const char* pName);
@@ -55,6 +63,13 @@ uint32_t SpyOverride_vkEnumeratePhysicalDeviceGroupsKHR(
 
 void SpyOverride_vkGetDeviceQueue(CallObserver*, VkDevice device, uint32_t queueFamilyIndex,
                                   uint32_t queueIndex, VkQueue* pQueue);
+void SpyOverride_vkGetDeviceQueue2(CallObserver*, VkDevice device,
+                                   const VkDeviceQueueInfo2* pQueueInfo,
+                                   VkQueue* pQueue);
+uint32_t SpyOverride_vkEnumeratePhysicalDevices(
+    CallObserver*, VkInstance instance, uint32_t* pPhysicalDeviceCount,
+    VkPhysicalDevice* pPhysicalDevices);
+
 uint32_t SpyOverride_vkAllocateCommandBuffers(
     CallObserver*, VkDevice device, VkCommandBufferAllocateInfo* pAllocateInfo,
     VkCommandBuffer* pCommandBuffers);

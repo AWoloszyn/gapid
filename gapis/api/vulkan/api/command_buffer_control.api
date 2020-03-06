@@ -377,6 +377,7 @@ sub void AddCommand(
 
 @threadSafety("system")
 @indirect("VkDevice")
+@override
 @custom
 cmd VkResult vkAllocateCommandBuffers(
     VkDevice                           device,

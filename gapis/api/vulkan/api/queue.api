@@ -62,6 +62,7 @@
 
 @threadSafety("system")
 @indirect("VkDevice")
+@override
 cmd void vkGetDeviceQueue(
     VkDevice device,
     u32      queueFamilyIndex,
@@ -86,6 +87,7 @@ cmd void vkGetDeviceQueue(
 @since("1.1")
 @threadSafety("system")
 @indirect("VkDevice")
+@override
 cmd void vkGetDeviceQueue2(
     VkDevice                  device,
     const VkDeviceQueueInfo2* pQueueInfo,
