@@ -79,8 +79,8 @@ func (t *VulkanTerminator) Add(ctx context.Context, id api.CmdID, subcommand api
 }
 
 func walkCommands(s *State,
-	commands U32ːCommandReferenceʳDense_ᵐ,
-	callback func(CommandReferenceʳ)) {
+	commands U32ːCommandReferenceDense_ᵐ,
+	callback func(CommandReference)) {
 	for _, c := range commands.Keys() {
 		callback(commands.Get(c))
 		if commands.Get(c).Type() == CommandType_cmd_vkCmdExecuteCommands {
@@ -119,7 +119,7 @@ func resolveCurrentRenderPass(ctx context.Context, s *api.GlobalState, submit *V
 	c := GetState(s)
 	l := s.MemoryLayout
 
-	f := func(o CommandReferenceʳ) {
+	f := func(o CommandReference) {
 		switch o.Type() {
 		case CommandType_cmd_vkCmdBeginRenderPass:
 			t := c.CommandBuffers().Get(o.Buffer()).BufferCommands().VkCmdBeginRenderPass().Get(o.MapIndex())

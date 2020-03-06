@@ -490,14 +490,13 @@ bool VulkanSpy::hasDynamicProperty(CallObserver* observer,
   return false;
 }
 
-void VulkanSpy::resetCmd(CallObserver* observer, VkCommandBuffer cmdBuf) {}
 void VulkanSpy::enterSubcontext(CallObserver*) {}
 void VulkanSpy::leaveSubcontext(CallObserver*) {}
 void VulkanSpy::nextSubcontext(CallObserver*) {}
 void VulkanSpy::resetSubcontext(CallObserver*) {}
-void VulkanSpy::onPreSubcommand(CallObserver*, gapil::Ref<CommandReference>) {}
+void VulkanSpy::onPreSubcommand(CallObserver*, CommandReference) {}
 
-void VulkanSpy::onPostSubcommand(CallObserver*, gapil::Ref<CommandReference>) {}
+void VulkanSpy::onPostSubcommand(CallObserver*, CommandReference) {}
 void VulkanSpy::onCommandAdded(CallObserver*, VkCommandBuffer) {}
 uint32_t VulkanSpy::onesCount(CallObserver*, uint32_t x) {
   return std::bitset<32>(x).count();
@@ -1067,4 +1066,232 @@ void VulkanSpy::walkImageSubRng(
     }
   }
 }
+}  // namespace gapii
+
+template <size_t S, size_t... Ss>
+struct size_sum {
+  static const size_t value = S + size_sum<Ss...>::value;
+};
+
+template <size_t S>
+struct size_sum<S> {
+  static const size_t value = S;
+};
+
+constexpr uint32_t page_size = 4096;
+namespace vulkan {
+using expand_type = int[];
+struct CBData {
+  ~CBData() {
+    for (auto i : data) {
+      free(i);
+    }
+  }
+  template <typename T>
+  void encodeArgSafe(T& t) {
+    memcpy(lastDat + offset, &t, sizeof(T));
+    offset += sizeof(T);
+  }
+
+  template <typename... Args>
+  void encodeArgs(Args... args) {
+    constexpr size_t total_size = size_sum<sizeof(Args)...>::value;
+    static_assert(total_size < page_size, "Invalid args");
+    if (lastDat == nullptr) {
+      offset = 0;
+      lastDat = (char*)malloc(page_size);
+      data.push_back(lastDat);
+    } else if (offset + total_size > page_size) {
+      offset = 0;
+      ++data_offset;
+      if (data_offset >= data.size()) {
+        lastDat = (char*)malloc(page_size);
+        data.push_back(lastDat);
+      } else {
+        lastDat = data[data_offset];
+      }
+    }
+    using expand_type = int[];
+    expand_type{(encodeArgSafe(args), 0)...};
+  }
+
+  template <typename T>
+  void encodeArray(size_t s, T* t) {
+    if (s == 0) return;
+    size_t total_size = sizeof(T) * s;
+    size_t min_alloc = total_size > page_size ? total_size : page_size;
+    if (lastDat == nullptr) {
+      lastDat = (char*)malloc(min_alloc);
+      data.push_back(lastDat);
+      offset = 0;
+    } else if (offset + total_size > page_size) {
+      ++data_offset;
+      offset = 0;
+      if (data_offset >= data.size()) {
+        lastDat = (char*)malloc(min_alloc);
+        data.push_back(lastDat);
+      } else {
+        if (total_size > page_size) {
+          data.push_back(data[data_offset]);
+          data[data_offset] = (char*)malloc(total_size);
+        }
+        lastDat = data[data_offset];
+      }
+    }
+    memcpy(lastDat + offset, t, total_size);
+  }
+
+  std::deque<char*> data;
+  size_t offset = 0;
+  size_t data_offset = 0;
+  char* lastDat = nullptr;
+};
+}  // namespace vulkan
+namespace gapii {
+std::unordered_map<VkCommandBuffer, vulkan::CBData*> all_data;
+thread_local VkCommandBuffer cbo;
+thread_local vulkan::CBData* cbDat;
+vulkan::CBData* VulkanSpy::get_cb_data(VkCommandBuffer cb) {
+  if (cbo || cbo != cb) {
+    cbo = cb;
+    auto it = all_data.find(cb);
+    if (it != all_data.end()) {
+      cbDat = it->second;
+      return cbDat;
+    }
+    all_data[cb] = new vulkan::CBData();
+    cbDat = all_data[cb];
+  }
+  return cbDat;
+}
+
+void VulkanSpy::vkCmdBindDescriptorSets_fastpath(
+    bool& cont, gapii::VkCommandBuffer commandBuffer,
+    uint32_t pipelineBindPoint, gapii::VkPipelineLayout layout,
+    uint32_t firstSet, uint32_t descriptorSetCount,
+    const gapii::VkDescriptorSet* pDescriptorSets, uint32_t dynamicOffsetCount,
+    const uint32_t* pDynamicOffsets) {
+  auto cbd = get_cb_data(commandBuffer);
+  cbd->encodeArgs(1, pipelineBindPoint, layout, firstSet, descriptorSetCount,
+                  dynamicOffsetCount);
+  cbd->encodeArray(descriptorSetCount, pDescriptorSets);
+  cbd->encodeArray(dynamicOffsetCount, pDynamicOffsets);
+  // TODO: read/write lock for mVkCommandBufferFunctions
+  // Only changes when we allocate/free command buffers, RWlock will work
+  if (!should_trace(2)) {
+    auto it = mVkCommandBufferFunctions.find(commandBuffer);
+    auto fn = (it != mVkCommandBufferFunctions.end())
+                  ? it->second->vkCmdBindDescriptorSets
+                  : nullptr;
+    if (!fn) {
+      GAPID_ERROR(
+          "Application called unsupported function vkCmdBindDescriptorSets");
+      return;
+    }
+
+    cont = false;
+    return fn(commandBuffer, pipelineBindPoint, layout, firstSet,
+              descriptorSetCount, pDescriptorSets, dynamicOffsetCount,
+              pDynamicOffsets);
+  }
+  return;
+}
+
+void VulkanSpy::vkCmdBindVertexBuffers_fastpath(
+    bool& cont, gapii::VkCommandBuffer commandBuffer, uint32_t firstBinding,
+    uint32_t bindingCount, const gapii::VkBuffer* pBuffers,
+    const gapii::VkDeviceSize* pOffsets) {
+  auto cbd = get_cb_data(commandBuffer);
+  cbd->encodeArgs(2, firstBinding, bindingCount);
+  cbd->encodeArray(firstBinding, pBuffers);
+  cbd->encodeArray(bindingCount, pOffsets);
+  if (!should_trace(2)) {
+    // TODO: read/write lock for mVkCommandBufferFunctions
+    // Only changes when we allocate/free command buffers, RWlock will work
+    auto it = mVkCommandBufferFunctions.find(commandBuffer);
+    auto fn = (it != mVkCommandBufferFunctions.end())
+                  ? it->second->vkCmdBindVertexBuffers
+                  : nullptr;
+
+    cont = false;
+    return fn(commandBuffer, firstBinding, bindingCount, pBuffers, pOffsets);
+  }
+  return;
+}
+
+void VulkanSpy::vkCmdBindIndexBuffer_fastpath(
+    bool& cont, gapii::VkCommandBuffer commandBuffer, gapii::VkBuffer buffer,
+    gapii::VkDeviceSize deviceSize, uint32_t type) {
+  auto cbd = get_cb_data(commandBuffer);
+  cbd->encodeArgs(3, buffer, deviceSize, type);
+  if (!should_trace(2)) {
+    // TODO: read/write lock for mVkCommandBufferFunctions
+    // Only changes when we allocate/free command buffers, RWlock will work
+    auto it = mVkCommandBufferFunctions.find(commandBuffer);
+    auto fn = (it != mVkCommandBufferFunctions.end())
+                  ? it->second->vkCmdBindIndexBuffer
+                  : nullptr;
+    cont = false;
+    return fn(commandBuffer, buffer, deviceSize, type);
+  }
+  return;
+}
+
+void VulkanSpy::vkCmdDrawIndexed_fastpath(
+    bool& cont, gapii::VkCommandBuffer commandBuffer, uint32_t indexCount,
+    uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset,
+    uint32_t firstInstance) {
+  auto cbd = get_cb_data(commandBuffer);
+  cbd->encodeArgs(4, indexCount, instanceCount, firstIndex, vertexOffset,
+                  firstInstance);
+  if (!should_trace(2)) {
+    // TODO: read/write lock for mVkCommandBufferFunctions
+    // Only changes when we allocate/free command buffers, RWlock will work
+    auto it = mVkCommandBufferFunctions.find(commandBuffer);
+    auto fn = (it != mVkCommandBufferFunctions.end())
+                  ? it->second->vkCmdDrawIndexed
+                  : nullptr;
+    cont = false;
+    return fn(commandBuffer, indexCount, instanceCount, firstIndex,
+              vertexOffset, firstInstance);
+  }
+  return;
+}
+
+void VulkanSpy::vkCmdBindPipeline_fastpath(bool& cont,
+                                           gapii::VkCommandBuffer commandBuffer,
+                                           uint32_t pipelineBindPoint,
+                                           gapii::VkPipeline pipeline) {
+  auto cbd = get_cb_data(commandBuffer);
+  cbd->encodeArgs(5, pipelineBindPoint, pipeline);
+  if (!should_trace(2)) {
+    // TODO: read/write lock for mVkCommandBufferFunctions
+    // Only changes when we allocate/free command buffers, RWlock will work
+    auto it = mVkCommandBufferFunctions.find(commandBuffer);
+    auto fn = (it != mVkCommandBufferFunctions.end())
+                  ? it->second->vkCmdBindPipeline
+                  : nullptr;
+    cont = false;
+    return fn(commandBuffer, pipelineBindPoint, pipeline);
+  }
+  return;
+}
+
+void VulkanSpy::resetCmd(CallObserver* observer, VkCommandBuffer cmdBuf) {
+  auto cbd = get_cb_data(cmdBuf);
+  cbd->offset = 0;
+  cbd->data_offset = 0;
+  cbd->lastDat = (cbd->data.size() > 0) ? cbd->data[0] : nullptr;
+}
+
+void VulkanSpy::freeCmd(CallObserver* observer, VkCommandBuffer cb) {
+  auto it = all_data.find(cb);
+  if (it != all_data.end()) {
+    delete it->second;
+    all_data.erase(it);
+    cbo = 0;
+    cbDat = nullptr;
+  }
+}
+
 }  // namespace gapii

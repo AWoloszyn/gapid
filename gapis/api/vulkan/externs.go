@@ -92,6 +92,9 @@ func (e externs) resetCmd(commandBuffer VkCommandBuffer) {
 	delete(GetState(e.s).initialCommands, commandBuffer)
 }
 
+func (e externs) freeCmd(commandBuffer VkCommandBuffer) {
+}
+
 func (e externs) onCommandAdded(buffer VkCommandBuffer) {
 	o := GetState(e.s)
 	o.initialCommands[buffer] =
@@ -128,7 +131,7 @@ func (e externs) nextSubcontext() {
 	o.SubCmdIdx[len(o.SubCmdIdx)-1]++
 }
 
-func (e externs) onPreSubcommand(ref CommandReferenceʳ) {
+func (e externs) onPreSubcommand(ref CommandReference) {
 	o := GetState(e.s)
 	if o.PreSubcommand != nil {
 		o.PreSubcommand(ref)
@@ -138,7 +141,7 @@ func (e externs) onPreSubcommand(ref CommandReferenceʳ) {
 	}
 }
 
-func (e externs) onPostSubcommand(ref CommandReferenceʳ) {
+func (e externs) onPostSubcommand(ref CommandReference) {
 	o := GetState(e.s)
 	if o.PostSubcommand != nil {
 		o.PostSubcommand(ref)

@@ -326,21 +326,27 @@ cmd void vkCmdBeginRenderPass(
     VkCommandBuffer              commandBuffer,
     const VkRenderPassBeginInfo* pRenderPassBegin,
     VkSubpassContents            contents) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
-    cb := CommandBuffers[commandBuffer]
+    mapPos := cmdBuf.BufferCommands.vkCmdBeginRenderPassCount
+
     if pRenderPassBegin == null { vkErrorNullPointer("VkRenderPassBeginInfo") }
     begin_info := pRenderPassBegin[0]
     if !(begin_info.renderPass in RenderPasses) { vkErrorInvalidRenderPass(begin_info.renderPass) }
     if !(begin_info.framebuffer in Framebuffers) { vkErrorInvalidFramebuffer(begin_info.framebuffer) }
-
-    args := new!vkCmdBeginRenderPassArgs(
-      Contents:     contents,
-      RenderPass:   begin_info.renderPass,
-      Framebuffer:  begin_info.framebuffer,
-      RenderArea:   begin_info.renderArea
-    )
+    oldArgs := cmdBuf.BufferCommands.vkCmdBeginRenderPass[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdBeginRenderPassArgs()
+      case false: oldArgs
+    }
+    clear(args.ClearValues)
+    args.DeviceGroupBeginInfo = null    
+    args.Contents = contents
+    args.RenderPass = begin_info.renderPass
+    args.Framebuffer = begin_info.framebuffer
+    args.RenderArea = begin_info.renderArea
 
     // handle pNext
     if begin_info.pNext != null {
@@ -371,16 +377,15 @@ cmd void vkCmdBeginRenderPass(
       args.ClearValues[i] = clear_values[i]
     }
 
-    cb.CurrentRecordingRenderpass = RenderPasses[begin_info.renderPass]
-    cb.CurrentRecordingFramebuffer = Framebuffers[begin_info.framebuffer]
-    cb.PreviouslyStartedRenderpass = RenderPasses[begin_info.renderPass]
-    cb.PreviousFramebuffer = Framebuffers[begin_info.framebuffer]
-    RecordSubpassBegin(cb, 0)
+    cmdBuf.CurrentRecordingRenderpass = RenderPasses[begin_info.renderPass]
+    cmdBuf.CurrentRecordingFramebuffer = Framebuffers[begin_info.framebuffer]
+    cmdBuf.PreviouslyStartedRenderpass = RenderPasses[begin_info.renderPass]
+    cmdBuf.PreviousFramebuffer = Framebuffers[begin_info.framebuffer]
+    RecordSubpassBegin(cmdBuf, 0)
+    cmdBuf.BufferCommands.vkCmdBeginRenderPass[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdBeginRenderPassCount = mapPos + 1
 
-    mapPos := as!u32(len(cb.BufferCommands.vkCmdBeginRenderPass))
-    cb.BufferCommands.vkCmdBeginRenderPass[mapPos] = args
-
-    AddCommand(commandBuffer, cmd_vkCmdBeginRenderPass, mapPos)
+    AddCommand(cmdBuf, cmd_vkCmdBeginRenderPass, mapPos)
   }
 }
 
@@ -424,18 +429,25 @@ sub void dovkCmdNextSubpass(ref!vkCmdNextSubpassArgs Unused) {
 cmd void vkCmdNextSubpass(
     VkCommandBuffer   commandBuffer,
     VkSubpassContents contents) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
-    cmdBuf := CommandBuffers[commandBuffer]
-    args := new!vkCmdNextSubpassArgs(contents)
+    mapPos := cmdBuf.BufferCommands.vkCmdNextSubpassCount
+
+    oldArgs := cmdBuf.BufferCommands.vkCmdNextSubpass[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdNextSubpassArgs(as!VkSubpassContents(0))
+      case false: oldArgs
+    }
+    args.Contents = contents
 
     RecordSubpassBegin(cmdBuf, cmdBuf.CurrentRecordingSubpass + 1)
 
-    mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdNextSubpass))
     cmdBuf.BufferCommands.vkCmdNextSubpass[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdNextSubpassCount = mapPos + 1
 
-    AddCommand(commandBuffer, cmd_vkCmdNextSubpass, mapPos)
+    AddCommand(cmdBuf, cmd_vkCmdNextSubpass, mapPos)
   }
 }
 
@@ -458,12 +470,18 @@ sub void dovkCmdEndRenderPass(ref!vkCmdEndRenderPassArgs unused) {
 @indirect("VkCommandBuffer", "VkDevice")
 cmd void vkCmdEndRenderPass(
     VkCommandBuffer commandBuffer) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
-    cmdBuf := CommandBuffers[commandBuffer]
-    args := new!vkCmdEndRenderPassArgs()
+    mapPos := cmdBuf.BufferCommands.vkCmdEndRenderPassCount
 
+    oldArgs := cmdBuf.BufferCommands.vkCmdEndRenderPass[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdEndRenderPassArgs()
+      case false: oldArgs
+    }
+    
     if (cmdBuf.CurrentRecordingRenderpass == null) {
       vkErrorInvalidRenderPass(as!VkRenderPass(0))
     } else if (cmdBuf.CurrentRecordingFramebuffer == null) {
@@ -480,10 +498,10 @@ cmd void vkCmdEndRenderPass(
     cmdBuf.CurrentRecordingFramebuffer = null
     cmdBuf.CurrentRecordingSubpass = 0
 
-    mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdEndRenderPass))
     cmdBuf.BufferCommands.vkCmdEndRenderPass[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdEndRenderPassCount = mapPos + 1
 
-    AddCommand(commandBuffer, cmd_vkCmdEndRenderPass, mapPos)
+    AddCommand(cmdBuf, cmd_vkCmdEndRenderPass, mapPos)
   }
 }
 

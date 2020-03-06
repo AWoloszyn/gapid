@@ -178,19 +178,27 @@ cmd void vkCmdBeginQuery(
     VkQueryPool         queryPool,
     u32                 query,
     VkQueryControlFlags flags) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
     if !(queryPool in QueryPools) { vkErrorInvalidQueryPool(queryPool) }
-    args := new!vkCmdBeginQueryArgs(
-      queryPool,          query, flags
-    )
+    mapPos := cmdBuf.BufferCommands.vkCmdBeginQueryCount
 
-    cmdBuf := CommandBuffers[commandBuffer]
-    mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdBeginQuery))
+    oldArgs := cmdBuf.BufferCommands.vkCmdBeginQuery[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdBeginQueryArgs()
+      case false: oldArgs
+    }
+    
+    args.QueryPool = queryPool
+    args.Query = query
+    args.Flags = flags
+
     cmdBuf.BufferCommands.vkCmdBeginQuery[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdBeginQueryCount = mapPos + 1
 
-    AddCommand(commandBuffer, cmd_vkCmdBeginQuery, mapPos)
+    AddCommand(cmdBuf, cmd_vkCmdBeginQuery, mapPos)
   }
 }
 
@@ -219,19 +227,25 @@ cmd void vkCmdEndQuery(
     VkCommandBuffer commandBuffer,
     VkQueryPool     queryPool,
     u32             query) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
     if !(queryPool in QueryPools) { vkErrorInvalidQueryPool(queryPool) }
-    args := new!vkCmdEndQueryArgs(
-      queryPool,        query
-    )
+    mapPos :=cmdBuf.BufferCommands.vkCmdEndQueryCount
 
-    cmdBuf := CommandBuffers[commandBuffer]
-    mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdEndQuery))
+    oldArgs := cmdBuf.BufferCommands.vkCmdEndQuery[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdEndQueryArgs()
+      case false: oldArgs
+    }
+    args.QueryPool = queryPool
+    args.Query = query
+
     cmdBuf.BufferCommands.vkCmdEndQuery[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdEndQueryCount = mapPos + 1
 
-    AddCommand(commandBuffer, cmd_vkCmdEndQuery, mapPos)
+    AddCommand(cmdBuf, cmd_vkCmdEndQuery, mapPos)
   }
 }
 
@@ -262,19 +276,26 @@ cmd void vkCmdResetQueryPool(
     VkQueryPool     queryPool,
     u32             firstQuery,
     u32             queryCount) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
     if !(queryPool in QueryPools) { vkErrorInvalidQueryPool(queryPool) }
-    args := new!vkCmdResetQueryPoolArgs(
-      queryPool,              firstQuery, queryCount
-    )
+    mapPos := cmdBuf.BufferCommands.vkCmdResetQueryPoolCount
 
-    cmdBuf := CommandBuffers[commandBuffer]
-    mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdResetQueryPool))
+    oldArgs := cmdBuf.BufferCommands.vkCmdResetQueryPool[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdResetQueryPoolArgs()
+      case false: oldArgs
+    }
+    args.QueryPool = queryPool
+    args.FirstQuery = firstQuery
+    args.QueryCount = queryCount
+
     cmdBuf.BufferCommands.vkCmdResetQueryPool[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdResetQueryPoolCount = mapPos + 1
 
-    AddCommand(commandBuffer, cmd_vkCmdResetQueryPool, mapPos)
+    AddCommand(cmdBuf, cmd_vkCmdResetQueryPool, mapPos)
   }
 }
 
@@ -305,19 +326,26 @@ cmd void vkCmdWriteTimestamp(
     VkPipelineStageFlagBits pipelineStage,
     VkQueryPool             queryPool,
     u32                     query) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
     if !(queryPool in QueryPools) { vkErrorInvalidQueryPool(queryPool) }
-    args := new!vkCmdWriteTimestampArgs(
-      pipelineStage,          queryPool, query
-    )
+    mapPos := cmdBuf.BufferCommands.vkCmdWriteTimestampCount
+    
+    oldArgs := cmdBuf.BufferCommands.vkCmdWriteTimestamp[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdWriteTimestampArgs()
+      case false: oldArgs
+    }
+    args.PipelineStage = pipelineStage
+    args.QueryPool = queryPool
+    args.Query = query
 
-    cmdBuf := CommandBuffers[commandBuffer]
-    mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdWriteTimestamp))
     cmdBuf.BufferCommands.vkCmdWriteTimestamp[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdWriteTimestampCount = mapPos + 1
 
-    AddCommand(commandBuffer, cmd_vkCmdWriteTimestamp, mapPos)
+    AddCommand(cmdBuf, cmd_vkCmdWriteTimestamp, mapPos)
   }
 }
 
@@ -374,7 +402,8 @@ cmd void vkCmdCopyQueryPoolResults(
     VkDeviceSize       dstOffset,
     VkDeviceSize       stride,
     VkQueryResultFlags flags) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
     if !(queryPool in QueryPools) {
@@ -383,22 +412,26 @@ cmd void vkCmdCopyQueryPoolResults(
       if !(dstBuffer in Buffers) {
         vkErrorInvalidBuffer(dstBuffer)
       } else {
-        cmdBuf := CommandBuffers[commandBuffer]
+        mapPos := cmdBuf.BufferCommands.vkCmdCopyQueryPoolResultsCount
 
-        args := new!vkCmdCopyQueryPoolResultsArgs(
-          QueryPool:   queryPool,
-          FirstQuery:  firstQuery,
-          QueryCount:  queryCount,
-          DstBuffer:   dstBuffer,
-          DstOffset:   dstOffset,
-          Stride:      stride,
-          Flags:       flags
-        )
+        oldArgs := cmdBuf.BufferCommands.vkCmdCopyQueryPoolResults[mapPos]
+        args := switch oldArgs == null {
+          case true: new!vkCmdCopyQueryPoolResultsArgs()
+          case false: oldArgs
+        }
+        
+        args.QueryPool = queryPool
+        args.FirstQuery = firstQuery
+        args.QueryCount = queryCount
+        args.DstBuffer = dstBuffer
+        args.DstOffset = dstOffset
+        args.Stride = stride
+        args.Flags = flags
 
-        mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdCopyQueryPoolResults))
         cmdBuf.BufferCommands.vkCmdCopyQueryPoolResults[mapPos] = args
+        cmdBuf.BufferCommands.vkCmdCopyQueryPoolResultsCount = mapPos + 1
 
-        AddCommand(commandBuffer, cmd_vkCmdCopyQueryPoolResults, mapPos)
+        AddCommand(cmdBuf, cmd_vkCmdCopyQueryPoolResults, mapPos)
       }
     }
   }

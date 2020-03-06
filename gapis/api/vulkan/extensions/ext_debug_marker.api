@@ -127,23 +127,28 @@ sub void dovkCmdDebugMarkerBeginEXT(ref!vkCmdDebugMarkerBeginEXTArgs args) {
 cmd void vkCmdDebugMarkerBeginEXT(
     VkCommandBuffer             commandBuffer,
     const VkDebugMarkerMarkerInfoEXT* pMarkerInfo) {
-  markerInfo := pMarkerInfo[0]
-  args := new!vkCmdDebugMarkerBeginEXTArgs(
-    MarkerName: as!string(markerInfo.pMarkerName),
-  )
-  args.Color[0] = markerInfo.color[0]
-  args.Color[1] = markerInfo.color[1]
-  args.Color[2] = markerInfo.color[2]
-  args.Color[3] = markerInfo.color[3]
-
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
-    mapPos := as!u32(len(CommandBuffers[commandBuffer].BufferCommands.vkCmdDebugMarkerBeginEXT))
-    CommandBuffers[commandBuffer].BufferCommands.vkCmdDebugMarkerBeginEXT[mapPos] =
-    args
+    markerInfo := pMarkerInfo[0]
+    mapPos := cmdBuf.BufferCommands.vkCmdDebugMarkerBeginEXTCount
 
-    AddCommand(commandBuffer, cmd_vkCmdDebugMarkerBeginEXT, mapPos)
+    oldArgs := cmdBuf.BufferCommands.vkCmdDebugMarkerBeginEXT[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdDebugMarkerBeginEXTArgs()
+      case false: oldArgs
+    }
+    args.MarkerName = as!string(markerInfo.pMarkerName)
+    args.Color[0] = markerInfo.color[0]
+    args.Color[1] = markerInfo.color[1]
+    args.Color[2] = markerInfo.color[2]
+    args.Color[3] = markerInfo.color[3]
+
+    cmdBuf.BufferCommands.vkCmdDebugMarkerBeginEXT[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdDebugMarkerBeginEXTCount = mapPos + 1
+
+    AddCommand(cmdBuf, cmd_vkCmdDebugMarkerBeginEXT, mapPos)
   }
 }
 
@@ -161,16 +166,23 @@ sub void dovkCmdDebugMarkerEndEXT(ref!vkCmdDebugMarkerEndEXTArgs draw) {
 @no_replay
 cmd void vkCmdDebugMarkerEndEXT(
     VkCommandBuffer commandBuffer) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
-    args := new!vkCmdDebugMarkerEndEXTArgs()
+    mapPos := cmdBuf.BufferCommands.vkCmdDebugMarkerEndEXTCount
 
-    mapPos := as!u32(len(CommandBuffers[commandBuffer].BufferCommands.vkCmdDebugMarkerEndEXT))
-    CommandBuffers[commandBuffer].BufferCommands.vkCmdDebugMarkerEndEXT[mapPos] =
+    oldArgs := cmdBuf.BufferCommands.vkCmdDebugMarkerEndEXT[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdDebugMarkerEndEXTArgs()
+      case false: oldArgs
+    }
+
+    cmdBuf.BufferCommands.vkCmdDebugMarkerEndEXT[mapPos] =
     args
+    cmdBuf.BufferCommands.vkCmdDebugMarkerEndEXTCount = mapPos + 1
 
-    AddCommand(commandBuffer, cmd_vkCmdDebugMarkerEndEXT, mapPos)
+    AddCommand(cmdBuf, cmd_vkCmdDebugMarkerEndEXT, mapPos)
   }
 }
 
@@ -192,23 +204,30 @@ sub void dovkCmdDebugMarkerInsertEXT(ref!vkCmdDebugMarkerInsertEXTArgs draw) {
 cmd void vkCmdDebugMarkerInsertEXT(
     VkCommandBuffer             commandBuffer,
     const VkDebugMarkerMarkerInfoEXT* pMarkerInfo) {
-  markerInfo := pMarkerInfo[0]
-  args := new!vkCmdDebugMarkerInsertEXTArgs(
-    MarkerName: as!string(markerInfo.pMarkerName),
-  )
-  args.Color[0] = markerInfo.color[0]
-  args.Color[1] = markerInfo.color[1]
-  args.Color[2] = markerInfo.color[2]
-  args.Color[3] = markerInfo.color[3]
-
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
-    mapPos := as!u32(len(CommandBuffers[commandBuffer].BufferCommands.vkCmdDebugMarkerInsertEXT))
+    markerInfo := pMarkerInfo[0]
+    mapPos := cmdBuf.BufferCommands.vkCmdDebugMarkerInsertEXTCount
+
+    oldArgs := cmdBuf.BufferCommands.vkCmdDebugMarkerInsertEXT[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdDebugMarkerInsertEXTArgs()
+      case false: oldArgs
+    }
+    
+    args.MarkerName = as!string(markerInfo.pMarkerName)
+    args.Color[0] = markerInfo.color[0]
+    args.Color[1] = markerInfo.color[1]
+    args.Color[2] = markerInfo.color[2]
+    args.Color[3] = markerInfo.color[3]
+
     CommandBuffers[commandBuffer].BufferCommands.vkCmdDebugMarkerInsertEXT[mapPos] =
     args
+    cmdBuf.BufferCommands.vkCmdDebugMarkerInsertEXTCount = mapPos + 1
 
-    AddCommand(commandBuffer, cmd_vkCmdDebugMarkerInsertEXT, mapPos)
+    AddCommand(cmdBuf, cmd_vkCmdDebugMarkerInsertEXT, mapPos)
   }
 }
 

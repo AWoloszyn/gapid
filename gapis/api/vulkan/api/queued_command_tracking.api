@@ -182,7 +182,7 @@ sub void executeSubmit(VkQueue queue, Submission sub) {
   }
 }
 
-sub void callCommand(ref!CommandReference reference) {
+sub void callCommand(CommandReference reference) {
   switch reference.Type {
     case cmd_vkCmdBindPipeline:
       dovkCmdBindPipeline(CommandBuffers[reference.Buffer].BufferCommands.vkCmdBindPipeline[reference.MapIndex])

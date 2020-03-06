@@ -53,6 +53,7 @@
 ¶
 namespace {{(Global "API")}} {
   class State;
+  struct CBData;
 }
 ¶
   namespace gapii {«
@@ -181,5 +182,8 @@ otherwise returns nothing.
   {{if not (GetAnnotation $ "pfn")}}
     {{Template "TemplateArgs" $}}
     {{Template "C++.ReturnType" $}} {{Template "C++.MethodName" $}}({{Macro "C++.CallParameters" $ | Strings "CallObserver* observer" | JoinWith ", "}});
+    {{if (GetAnnotation $ "fastpath")}}
+    {{Template "C++.ReturnType" $}} {{Template "C++.MethodName" $}}_fastpath({{Macro "C++.CallParameters" $ | Strings "bool& cont" | JoinWith ", "}});
+    {{end}}
   {{end}}
 {{end}}

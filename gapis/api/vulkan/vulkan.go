@@ -39,12 +39,10 @@ type customState struct {
 	IsRebuilding      bool
 	pushMarkerGroup   func(name string, next bool, ty MarkerType)
 	popMarkerGroup    func(ty MarkerType)
-	queuedCommands    map[CommandReferenceʳ]QueuedCommand
 	initialCommands   map[VkCommandBuffer][]api.Cmd
 }
 
 func (c *customState) init(s *State) {
-	c.queuedCommands = make(map[CommandReferenceʳ]QueuedCommand)
 	c.initialCommands = make(map[VkCommandBuffer][]api.Cmd)
 
 	for b, cb := range s.CommandBuffers().All() {
@@ -172,7 +170,7 @@ func (API) ResolveSynchronization(ctx context.Context, d *sync.Data, c *path.Cap
 
 	commandMap := make(map[api.Cmd]api.CmdID)
 	st.AddCommand = func(a interface{}) {
-		data := a.(CommandReferenceʳ)
+		data := a.(CommandReference)
 		if initialCommands, ok := st.initialCommands[data.Buffer()]; ok {
 			commandMap[initialCommands[data.CommandIndex()]] = i
 		}
@@ -391,7 +389,7 @@ func (API) IsTrivialTerminator(ctx context.Context, p *path.Capture, after api.S
 // RecoverMidExecutionCommand returns a virtual command, used to describe the
 // a subcommand that was created before the start of the trace
 func (API) RecoverMidExecutionCommand(ctx context.Context, c *path.Capture, dat interface{}) (api.Cmd, error) {
-	cr, ok := dat.(CommandReferenceʳ)
+	cr, ok := dat.(CommandReference)
 	if !ok {
 		return nil, fmt.Errorf("Not a command reference")
 	}

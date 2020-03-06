@@ -86,7 +86,6 @@ sub void dovkCmdDrawIndexedIndirectCountKHR(ref!vkCmdDrawIndexedIndirectCountKHR
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
 @executed_draw
-@threadsafe
 cmd void vkCmdDrawIndirectCountKHR(
     VkCommandBuffer commandBuffer,
     VkBuffer        buffer,
@@ -95,25 +94,31 @@ cmd void vkCmdDrawIndirectCountKHR(
     VkDeviceSize    countOffset,
     u32             maxDrawCount,
     u32             stride) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
     if !(buffer in Buffers) { vkErrorInvalidBuffer(buffer) }
     if !(countBuffer in Buffers) { vkErrorInvalidBuffer(buffer) }
-    args := new!vkCmdDrawIndirectCountKHRArgs(
-        buffer,
-        offset,
-        countBuffer,
-        countOffset,
-        maxDrawCount,
-        stride)
+    mapPos := cmdBuf.BufferCommands.vkCmdDrawIndirectCountKHRCount
 
-    cmdBuf := CommandBuffers[commandBuffer]
+    oldArgs := cmdBuf.BufferCommands.vkCmdDrawIndirectCountKHR[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdDrawIndirectCountKHRArgs()
+      case false: oldArgs
+    }
 
-    mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdDrawIndirectCountKHR))
+    args.Buffer = buffer
+    args.Offset = offset
+    args.CountBuffer = countBuffer
+    args.CountBufferOffset = countOffset
+    args.MaxDrawCount = maxDrawCount
+    args.Stride = stride
+
     cmdBuf.BufferCommands.vkCmdDrawIndirectCountKHR[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdDrawIndirectCountKHRCount = mapPos + 1
 
-    AddCommand(commandBuffer, cmd_vkCmdDrawIndirectCountKHR, mapPos)
+    AddCommand(cmdBuf, cmd_vkCmdDrawIndirectCountKHR, mapPos)
   }
 }
 
@@ -121,7 +126,6 @@ cmd void vkCmdDrawIndirectCountKHR(
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
 @executed_draw
-@threadsafe
 cmd void vkCmdDrawIndexedIndirectCountKHR(
     VkCommandBuffer commandBuffer,
     VkBuffer        buffer,
@@ -130,24 +134,29 @@ cmd void vkCmdDrawIndexedIndirectCountKHR(
     VkDeviceSize    countOffset,
     u32             maxDrawCount,
     u32             stride) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
     if !(buffer in Buffers) { vkErrorInvalidBuffer(buffer) }
     if !(countBuffer in Buffers) { vkErrorInvalidBuffer(buffer) }
-    args := new!vkCmdDrawIndexedIndirectCountKHRArgs(
-        buffer,
-        offset,
-        countBuffer,
-        countOffset,
-        maxDrawCount,
-        stride)
+    mapPos := cmdBuf.BufferCommands.vkCmdDrawIndexedIndirectCountKHRCount
 
-    cmdBuf := CommandBuffers[commandBuffer]
+    oldArgs := cmdBuf.BufferCommands.vkCmdDrawIndexedIndirectCountKHR[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdDrawIndexedIndirectCountKHRArgs()
+      case false: oldArgs
+    }
 
-    mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdDrawIndexedIndirectCountKHR))
+    args.Buffer = buffer
+    args.Offset = offset
+    args.CountBuffer = countBuffer
+    args.CountBufferOffset = countOffset
+    args.MaxDrawCount = maxDrawCount
+    args.Stride = stride
+
     cmdBuf.BufferCommands.vkCmdDrawIndexedIndirectCountKHR[mapPos] = args
-
-    AddCommand(commandBuffer, cmd_vkCmdDrawIndexedIndirectCountKHR, mapPos)
+    cmdBuf.BufferCommands.vkCmdDrawIndexedIndirectCountKHRCount = mapPos + 1
+    AddCommand(cmdBuf, cmd_vkCmdDrawIndexedIndirectCountKHR, mapPos)
   }
 }

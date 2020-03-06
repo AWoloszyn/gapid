@@ -1421,7 +1421,7 @@ func rebuildVkCmdDispatchBase(
 // GetCommandArgs takes a command reference and returns the command arguments
 // of that recorded command.
 func GetCommandArgs(ctx context.Context,
-	cr CommandReferenceʳ,
+	cr CommandReference,
 	s *State) interface{} {
 
 	cmds := s.CommandBuffers().Get(cr.Buffer()).BufferCommands()

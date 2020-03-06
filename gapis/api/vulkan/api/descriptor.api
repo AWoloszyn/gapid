@@ -524,7 +524,6 @@ sub map!(u32, DescriptorSetCopy) RewriteWriteDescriptorCopies
 }
 
 @indirect("VkDevice")
-@threadsafe
 cmd void vkUpdateDescriptorSets(
     VkDevice                    device,
     u32                         descriptorWriteCount,
@@ -810,9 +809,14 @@ sub void dovkCmdBindDescriptorSets(ref!vkCmdBindDescriptorSetsArgs args) {
   updateDescriptorBufferBindingOffsets(args)
 }
 
+@internal
+class MutableDescriptorSetArts {
+  ref!vkCmdBindDescriptorSetsArgs args
+}
+
 @threadSafety("app")
+@fastpath
 @indirect("VkCommandBuffer", "VkDevice")
-@threadsafe
 cmd void vkCmdBindDescriptorSets(
     VkCommandBuffer        commandBuffer,
     VkPipelineBindPoint    pipelineBindPoint,
@@ -822,30 +826,50 @@ cmd void vkCmdBindDescriptorSets(
     const VkDescriptorSet* pDescriptorSets,
     u32                    dynamicOffsetCount,
     const u32*             pDynamicOffsets) {
-  if !(commandBuffer in CommandBuffers) {
-    vkErrorInvalidCommandBuffer(commandBuffer)
-  } else {
-    cmdBuf := CommandBuffers[commandBuffer]
+  cmdBuf := CommandBuffers[commandBuffer]
+  //if cmdBuf == null {
+  //  vkErrorInvalidCommandBuffer(commandBuffer)
+  //} else {
+  //  if pDescriptorSets == null { vkErrorNullPointer("VkDescriptorSet") }
+    mutable_args := MutableDescriptorSetArts()
 
-    if pDescriptorSets == null { vkErrorNullPointer("VkDescriptorSet") }
-    sets := pDescriptorSets[0:descriptorSetCount]
-    args := new!vkCmdBindDescriptorSetsArgs(
-      PipelineBindPoint: pipelineBindPoint,
-      Layout:            layout,
-      FirstSet:          firstSet
-    )
+    mapPos := cmdBuf.BufferCommands.vkCmdBindDescriptorSetsCount
+
+    mutable_args.args = cmdBuf.BufferCommands.vkCmdBindDescriptorSets[mapPos]
+    if mutable_args.args == null {
+      mutable_args.args = new!vkCmdBindDescriptorSetsArgs()
+    }
+
+    clear(mutable_args.args.DynamicOffsets)
+    clear(mutable_args.args.DescriptorSets)
+
+    mutable_args.args.PipelineBindPoint = pipelineBindPoint
+    mutable_args.args.Layout = layout
+    mutable_args.args.FirstSet = firstSet
 
     dynamic_offsets := pDynamicOffsets[0:dynamicOffsetCount]
     for i in (0 .. dynamicOffsetCount) {
-      args.DynamicOffsets[i] = dynamic_offsets[i]
+      mutable_args.args.DynamicOffsets[i] = dynamic_offsets[i]
     }
+    sets := pDescriptorSets[0:descriptorSetCount]
     for i in (0 .. descriptorSetCount) {
-      args.DescriptorSets[i] = sets[i]
+      mutable_args.args.DescriptorSets[i] = sets[i]
     }
-    mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdBindDescriptorSets))
-    cmdBuf.BufferCommands.vkCmdBindDescriptorSets[mapPos] = args
-    AddCommand(commandBuffer, cmd_vkCmdBindDescriptorSets, mapPos)
-  }
+
+    cmdBuf.BufferCommands.vkCmdBindDescriptorSets[mapPos] = mutable_args.args
+    cmdBuf.BufferCommands.vkCmdBindDescriptorSetsCount = mapPos + 1
+
+    // Inline AddCommand here. For performance reasons
+    commandIndex := as!u32(len(cmdBuf.CommandReferences))
+    cmd := CommandReference(
+      Buffer: commandBuffer,
+      CommandIndex: commandIndex,
+      Type: cmd_vkCmdBindDescriptorSets,
+      MapIndex: mapPos,
+    )
+    cmdBuf.CommandReferences[commandIndex] = cmd
+    onCommandAdded(commandBuffer)
+  //}
 }
 
 @internal class
@@ -866,7 +890,6 @@ sub void dovkCmdPushConstants(ref!vkCmdPushConstantsArgs args) {
 }
 
 @indirect("VkCommandBuffer", "VkDevice")
-@threadsafe
 cmd void vkCmdPushConstants(
     VkCommandBuffer    commandBuffer,
     VkPipelineLayout   layout,
@@ -874,19 +897,28 @@ cmd void vkCmdPushConstants(
     u32                offset,
     u32                size,
     const void*        pValues) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
-    args := new!vkCmdPushConstantsArgs(
-      layout,                stageFlags, offset, size, clone(as!u8*(pValues)[0:size])
-    )
+    mapPos := cmdBuf.BufferCommands.vkCmdPushConstantsCount
 
-    cmdBuf := CommandBuffers[commandBuffer]
+    oldArgs := cmdBuf.BufferCommands.vkCmdPushConstants[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdPushConstantsArgs()
+      case false: oldArgs
+    }
 
-    mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdPushConstants))
+    args.Layout = layout
+    args.StageFlags = stageFlags
+    args.Offset = offset
+    args.Size = size
+    args.Data = clone(as!u8*(pValues)[0:size])
+
     cmdBuf.BufferCommands.vkCmdPushConstants[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdPushConstantsCount = mapPos + 1
 
-    AddCommand(commandBuffer, cmd_vkCmdPushConstants, mapPos)
+    AddCommand(cmdBuf, cmd_vkCmdPushConstants, mapPos)
   }
 }
 

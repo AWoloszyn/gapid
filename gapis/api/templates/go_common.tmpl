@@ -586,7 +586,7 @@
 */}}
 {{define "Go.Call"}}
   {{AssertType $ "Call"}}
-
+  
   {{$args := ForEach $.Arguments "Go.Read" | JoinWith ", "}}
   {{if $.Target.Object}}
     {{Template "Go.Read" $.Target.Object}}.{{$.Target.Function.Name}}(ϟctx, {{$args}})

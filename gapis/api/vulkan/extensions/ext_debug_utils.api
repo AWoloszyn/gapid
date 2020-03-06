@@ -194,20 +194,31 @@ sub void dovkCmdBeginDebugUtilsLabelEXT(ref!vkCmdBeginDebugUtilsLabelEXTArgs arg
 cmd void vkCmdBeginDebugUtilsLabelEXT(
     VkCommandBuffer             commandBuffer,
     const VkDebugUtilsLabelEXT* pLabelInfo) {
-  if !(commandBuffer in CommandBuffers) { vkErrorInvalidCommandBuffer(commandBuffer) }
-  labelInfo := pLabelInfo[0]
-  args := new!vkCmdBeginDebugUtilsLabelEXTArgs(
-    LabelName: as!string(labelInfo.pLabelName),
-  )
-  args.Color[0] = labelInfo.color[0]
-  args.Color[1] = labelInfo.color[1]
-  args.Color[2] = labelInfo.color[2]
-  args.Color[3] = labelInfo.color[3]
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
+    vkErrorInvalidCommandBuffer(commandBuffer)
+  } else {
+    labelInfo := pLabelInfo[0]
+    mapPos := cmdBuf.BufferCommands.vkCmdBeginDebugUtilsLabelEXTCount
 
-  mapPos := as!u32(len(CommandBuffers[commandBuffer].BufferCommands.vkCmdBeginDebugUtilsLabelEXT))
-  CommandBuffers[commandBuffer].BufferCommands.vkCmdBeginDebugUtilsLabelEXT[mapPos] = args
+    oldArgs := cmdBuf.BufferCommands.vkCmdBeginDebugUtilsLabelEXT[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdBeginDebugUtilsLabelEXTArgs()
+      case false: oldArgs
+    }
 
-  AddCommand(commandBuffer, cmd_vkCmdBeginDebugUtilsLabelEXT, mapPos)
+    args.LabelName =  as!string(labelInfo.pLabelName)
+
+    args.Color[0] = labelInfo.color[0]
+    args.Color[1] = labelInfo.color[1]
+    args.Color[2] = labelInfo.color[2]
+    args.Color[3] = labelInfo.color[3]
+
+    cmdBuf.BufferCommands.vkCmdBeginDebugUtilsLabelEXT[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdBeginDebugUtilsLabelEXTCount = mapPos + 1
+
+    AddCommand(cmdBuf, cmd_vkCmdBeginDebugUtilsLabelEXT, mapPos)
+  }
 }
 
 
@@ -225,14 +236,24 @@ sub void dovkCmdEndDebugUtilsLabelEXT(ref!vkCmdEndDebugUtilsLabelEXTArgs args) {
 @no_replay
 cmd void vkCmdEndDebugUtilsLabelEXT(
     VkCommandBuffer commandBuffer) {
-  if !(commandBuffer in CommandBuffers) { vkErrorInvalidCommandBuffer(commandBuffer) }
-  args := new!vkCmdEndDebugUtilsLabelEXTArgs()
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
+    vkErrorInvalidCommandBuffer(commandBuffer)
+  } else {
+    mapPos := cmdBuf.BufferCommands.vkCmdEndDebugUtilsLabelEXTCount
 
-  mapPos := as!u32(len(CommandBuffers[commandBuffer].BufferCommands.vkCmdEndDebugUtilsLabelEXT))
-  CommandBuffers[commandBuffer].BufferCommands.vkCmdEndDebugUtilsLabelEXT[mapPos] =
-  args
+    oldArgs := cmdBuf.BufferCommands.vkCmdEndDebugUtilsLabelEXT[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdEndDebugUtilsLabelEXTArgs()
+      case false: oldArgs
+    }
 
-  AddCommand(commandBuffer, cmd_vkCmdEndDebugUtilsLabelEXT, mapPos)
+    cmdBuf.BufferCommands.vkCmdEndDebugUtilsLabelEXT[mapPos] =
+    args
+    cmdBuf.BufferCommands.vkCmdEndDebugUtilsLabelEXTCount = mapPos + 1
+
+    AddCommand(cmdBuf, cmd_vkCmdEndDebugUtilsLabelEXT, mapPos)
+  }
 }
 
 
@@ -253,21 +274,30 @@ sub void dovkCmdInsertDebugUtilsLabelEXT(ref!vkCmdInsertDebugUtilsLabelEXTArgs a
 cmd void vkCmdInsertDebugUtilsLabelEXT(
     VkCommandBuffer             commandBuffer,
     const VkDebugUtilsLabelEXT* pLabelInfo) {
-  if !(commandBuffer in CommandBuffers) { vkErrorInvalidCommandBuffer(commandBuffer) }
-  labelInfo := pLabelInfo[0]
-  args := new!vkCmdInsertDebugUtilsLabelEXTArgs(
-    LabelName: as!string(labelInfo.pLabelName),
-  )
-  args.Color[0] = labelInfo.color[0]
-  args.Color[1] = labelInfo.color[1]
-  args.Color[2] = labelInfo.color[2]
-  args.Color[3] = labelInfo.color[3]
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
+    vkErrorInvalidCommandBuffer(commandBuffer)
+  } else {
+    labelInfo := pLabelInfo[0]
+    mapPos := cmdBuf.BufferCommands.vkCmdInsertDebugUtilsLabelEXTCount
 
-  mapPos := as!u32(len(CommandBuffers[commandBuffer].BufferCommands.vkCmdInsertDebugUtilsLabelEXT))
-  CommandBuffers[commandBuffer].BufferCommands.vkCmdInsertDebugUtilsLabelEXT[mapPos] =
-  args
+    oldArgs := cmdBuf.BufferCommands.vkCmdInsertDebugUtilsLabelEXT[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdInsertDebugUtilsLabelEXTArgs()
+      case false: oldArgs
+    }
 
-  AddCommand(commandBuffer, cmd_vkCmdInsertDebugUtilsLabelEXT, mapPos)
+    args.LabelName = as!string(labelInfo.pLabelName)
+    args.Color[0] = labelInfo.color[0]
+    args.Color[1] = labelInfo.color[1]
+    args.Color[2] = labelInfo.color[2]
+    args.Color[3] = labelInfo.color[3]
+
+    cmdBuf.BufferCommands.vkCmdInsertDebugUtilsLabelEXT[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdInsertDebugUtilsLabelEXTCount = mapPos + 1
+
+    AddCommand(cmdBuf, cmd_vkCmdInsertDebugUtilsLabelEXT, mapPos)
+  }
 }
 
 @threadSafety("app")

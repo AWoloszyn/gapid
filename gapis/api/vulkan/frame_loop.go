@@ -548,7 +548,7 @@ func (f *frameLoop) buildStartEndStates(ctx context.Context, startState *api.Glo
 
 	st := GetState(currentState)
 	st.PreSubcommand = func(i interface{}) {
-		cr, ok := i.(CommandReferenceʳ)
+		cr, ok := i.(CommandReference)
 		if ok {
 			args := GetCommandArgs(ctx, cr, st)
 			switch ar := args.(type) {

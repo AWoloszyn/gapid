@@ -145,19 +145,25 @@ sub void dovkCmdSetDeviceMaskKHR(ref!vkCmdSetDeviceMaskKHRArgs args) {
 @extension("VK_KHR_device_group")
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
-@threadsafe
 cmd void vkCmdSetDeviceMaskKHR(
   VkCommandBuffer commandBuffer,
   u32             deviceMask) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
-    args := new!vkCmdSetDeviceMaskKHRArgs(deviceMask)
-    cmdBuf := CommandBuffers[commandBuffer]
-    mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdSetDeviceMaskKHR))
+    mapPos := cmdBuf.BufferCommands.vkCmdSetDeviceMaskKHRCount
+    
+    oldArgs := cmdBuf.BufferCommands.vkCmdSetDeviceMaskKHR[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdSetDeviceMaskKHRArgs(as!u32(0))
+      case false: oldArgs
+    }
+    args.deviceMask = deviceMask
     cmdBuf.BufferCommands.vkCmdSetDeviceMaskKHR[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdSetDeviceMaskKHRCount = mapPos + 1
 
-    AddCommand(commandBuffer, cmd_vkCmdSetDeviceMaskKHR, mapPos)
+    AddCommand(cmdBuf, cmd_vkCmdSetDeviceMaskKHR, mapPos)
   }
 }
 
@@ -175,19 +181,26 @@ sub void dovkCmdSetDeviceMask(ref!vkCmdSetDeviceMaskArgs args) {
 // Vulkan 1.1
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
-@threadsafe
 cmd void vkCmdSetDeviceMask(
   VkCommandBuffer commandBuffer,
   u32             deviceMask) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
-    args := new!vkCmdSetDeviceMaskArgs(deviceMask)
-    cmdBuf := CommandBuffers[commandBuffer]
-    mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdSetDeviceMask))
-    cmdBuf.BufferCommands.vkCmdSetDeviceMask[mapPos] = args
+    mapPos := cmdBuf.BufferCommands.vkCmdSetDeviceMaskCount
 
-    AddCommand(commandBuffer, cmd_vkCmdSetDeviceMask, mapPos)
+    oldArgs := cmdBuf.BufferCommands.vkCmdSetDeviceMask[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdSetDeviceMaskArgs(as!u32(0))
+      case false: oldArgs
+    }
+    args.deviceMask = deviceMask
+
+    cmdBuf.BufferCommands.vkCmdSetDeviceMask[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdSetDeviceMaskCount = mapPos + 1
+
+    AddCommand(cmdBuf, cmd_vkCmdSetDeviceMask, mapPos)
   }
 }
 
@@ -211,7 +224,6 @@ sub void dovkCmdDispatchBaseKHR(ref!vkCmdDispatchBaseKHRArgs args) {
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
 @executed_draw
-@threadsafe
 cmd void vkCmdDispatchBaseKHR(
     VkCommandBuffer                             commandBuffer,
     u32                                         baseGroupX,
@@ -220,23 +232,29 @@ cmd void vkCmdDispatchBaseKHR(
     u32                                         groupCountX,
     u32                                         groupCountY,
     u32                                         groupCountZ) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
-    args := new!vkCmdDispatchBaseKHRArgs(
-      baseGroupX,
-      baseGroupY,
-      baseGroupZ,
-      groupCountX,
-      groupCountY,
-      groupCountZ
-    )
+    mapPos := cmdBuf.BufferCommands.vkCmdDispatchBaseKHRCount
 
-    cmdBuf := CommandBuffers[commandBuffer]
-    mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdDispatchBaseKHR))
+    oldArgs := cmdBuf.BufferCommands.vkCmdDispatchBaseKHR[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdDispatchBaseKHRArgs()
+      case false: oldArgs
+    }
+
+    args.BaseGroupX = baseGroupX
+    args.BaseGroupY = baseGroupY
+    args.BaseGroupZ = baseGroupZ
+    args.GroupCountX = groupCountX
+    args.GroupCountY = groupCountY
+    args.GroupCountZ = groupCountZ
+
     cmdBuf.BufferCommands.vkCmdDispatchBaseKHR[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdDispatchBaseKHRCount = mapPos + 1
 
-    AddCommand(commandBuffer, cmd_vkCmdDispatchBaseKHR, mapPos)
+    AddCommand(cmdBuf, cmd_vkCmdDispatchBaseKHR, mapPos)
   }
 }
 
@@ -260,7 +278,6 @@ sub void dovkCmdDispatchBase(ref!vkCmdDispatchBaseArgs args) {
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
 @executed_draw
-@threadsafe
 cmd void vkCmdDispatchBase(
     VkCommandBuffer                             commandBuffer,
     u32                                         baseGroupX,
@@ -269,23 +286,29 @@ cmd void vkCmdDispatchBase(
     u32                                         groupCountX,
     u32                                         groupCountY,
     u32                                         groupCountZ) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
-    args := new!vkCmdDispatchBaseArgs(
-      baseGroupX,
-      baseGroupY,
-      baseGroupZ,
-      groupCountX,
-      groupCountY,
-      groupCountZ
-    )
+    mapPos := cmdBuf.BufferCommands.vkCmdDispatchBaseCount
 
-    cmdBuf := CommandBuffers[commandBuffer]
-    mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdDispatchBase))
+    oldArgs := cmdBuf.BufferCommands.vkCmdDispatchBase[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdDispatchBaseArgs()
+      case false: oldArgs
+    }
+
+    args.BaseGroupX = baseGroupX
+    args.BaseGroupY = baseGroupY
+    args.BaseGroupZ = baseGroupZ
+    args.GroupCountX = groupCountX
+    args.GroupCountY = groupCountY
+    args.GroupCountZ = groupCountZ
+
     cmdBuf.BufferCommands.vkCmdDispatchBase[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdDispatchBaseCount = mapPos + 1
 
-    AddCommand(commandBuffer, cmd_vkCmdDispatchBase, mapPos)
+    AddCommand(cmdBuf, cmd_vkCmdDispatchBase, mapPos)
   }
 }
 

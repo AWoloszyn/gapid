@@ -62,30 +62,34 @@ sub void dovkCmdBindIndexBuffer(ref!vkCmdBindIndexBufferArgs buffer) {
   }
 }
 
-
+@fastpath
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
-@threadsafe
 cmd void vkCmdBindIndexBuffer(
     VkCommandBuffer commandBuffer,
     VkBuffer        buffer,
     VkDeviceSize    offset,
     VkIndexType     indexType) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
     if !(buffer in Buffers) { vkErrorInvalidBuffer(buffer) }
-    args := new!vkCmdBindIndexBufferArgs(
-      Buffer:     buffer,
-      Offset:     offset,
-      IndexType:  indexType
-    )
-    cmdBuf := CommandBuffers[commandBuffer]
+    mapPos := cmdBuf.BufferCommands.vkCmdBindIndexBufferCount
 
-    mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdBindIndexBuffer))
+    oldArgs := cmdBuf.BufferCommands.vkCmdBindIndexBuffer[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdBindIndexBufferArgs()
+      case false: oldArgs
+    }
+
+    args.Buffer = buffer
+    args.Offset = offset
+    args.IndexType = indexType
     cmdBuf.BufferCommands.vkCmdBindIndexBuffer[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdBindIndexBufferCount = mapPos + 1
 
-    AddCommand(commandBuffer, cmd_vkCmdBindIndexBuffer, mapPos)
+    AddCommand(cmdBuf, cmd_vkCmdBindIndexBuffer, mapPos)
   }
 }
 
@@ -93,8 +97,8 @@ cmd void vkCmdBindIndexBuffer(
 vkCmdBindVertexBuffersArgs {
   u32                     FirstBinding
   u32                     BindingCount
-  map!(u32, VkBuffer)     Buffers
-  map!(u32, VkDeviceSize) Offsets
+  dense_map!(u32, VkBuffer)     Buffers
+  dense_map!(u32, VkDeviceSize) Offsets
 }
 
 @internal
@@ -120,34 +124,42 @@ sub void dovkCmdBindVertexBuffers(ref!vkCmdBindVertexBuffersArgs bind) {
 
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
-@threadsafe
+@fastpath
 cmd void vkCmdBindVertexBuffers(
     VkCommandBuffer     commandBuffer,
     u32                 firstBinding,
     u32                 bindingCount,
     const VkBuffer*     pBuffers,
     const VkDeviceSize* pOffsets) {
-  if !(commandBuffer in CommandBuffers) {
-    vkErrorInvalidCommandBuffer(commandBuffer)
-  } else {
-    args := new!vkCmdBindVertexBuffersArgs(
-      FirstBinding:  firstBinding,
-      BindingCount:  bindingCount
-    )
-    buffers := pBuffers[0:bindingCount]
-    offsets := pOffsets[0:bindingCount]
-    for i in (0 .. bindingCount) {
-      if !(buffers[i] in Buffers) { vkErrorInvalidBuffer(buffers[i]) }
-      args.Buffers[i] = buffers[i]
-      args.Offsets[i] = offsets[i]
-    }
     cmdBuf := CommandBuffers[commandBuffer]
-    mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdBindVertexBuffers))
-    cmdBuf.BufferCommands.vkCmdBindVertexBuffers[mapPos] = args
+    if cmdBuf == null {
+      vkErrorInvalidCommandBuffer(commandBuffer)
+    } else {
+      mapPos := cmdBuf.BufferCommands.vkCmdBindVertexBuffersCount
 
-    AddCommand(commandBuffer, cmd_vkCmdBindVertexBuffers, mapPos)
+      oldArgs := cmdBuf.BufferCommands.vkCmdBindVertexBuffers[mapPos]
+      args := switch oldArgs == null {
+        case true: new!vkCmdBindVertexBuffersArgs()
+        case false: oldArgs
+      }
+
+      args.FirstBinding = firstBinding
+      args.BindingCount = bindingCount
+      clear(args.Buffers)
+      clear(args.Offsets)
+
+      buffers := pBuffers[0:bindingCount]
+      offsets := pOffsets[0:bindingCount]
+      for i in (0 .. bindingCount) {
+        args.Buffers[i] = buffers[i]
+        args.Offsets[i] = offsets[i]
+      }
+      cmdBuf.BufferCommands.vkCmdBindVertexBuffers[mapPos] = args
+      cmdBuf.BufferCommands.vkCmdBindVertexBuffersCount = mapPos + 1
+
+      AddCommand(cmdBuf, cmd_vkCmdBindVertexBuffers, mapPos)
+    }
   }
-}
 
 @internal class vkCmdDrawArgs {
   u32 VertexCount
@@ -170,23 +182,33 @@ sub void dovkCmdDraw(ref!vkCmdDrawArgs draw) {
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
 @executed_draw
-@threadsafe
 cmd void vkCmdDraw(
     VkCommandBuffer commandBuffer,
     u32             vertexCount,
     u32             instanceCount,
     u32             firstVertex,
     u32             firstInstance) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
-    args := new!vkCmdDrawArgs(vertexCount, instanceCount, firstVertex, firstInstance)
+    mapPos := cmdBuf.BufferCommands.vkCmdDrawCount
 
-    cmdBuf := CommandBuffers[commandBuffer]
-    mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdDraw))
+    oldArgs := cmdBuf.BufferCommands.vkCmdDraw[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdDrawArgs()
+      case false: oldArgs
+    }
+
+    args.VertexCount = vertexCount
+    args.InstanceCount = instanceCount
+    args.FirstVertex = firstVertex
+    args.FirstInstance = firstInstance
+
     cmdBuf.BufferCommands.vkCmdDraw[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdDrawCount = mapPos + 1
 
-    AddCommand(commandBuffer, cmd_vkCmdDraw, mapPos)
+    AddCommand(cmdBuf, cmd_vkCmdDraw, mapPos)
   }
 }
 
@@ -238,10 +260,10 @@ sub void dovkCmdDrawIndexed(ref!vkCmdDrawIndexedArgs draw) {
   ldi.CommandParameters.DrawIndexed = draw
 }
 
+@fastpath
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
 @executed_draw
-@threadsafe
 cmd void vkCmdDrawIndexed(
     VkCommandBuffer commandBuffer,
     u32             indexCount,
@@ -249,24 +271,30 @@ cmd void vkCmdDrawIndexed(
     u32             firstIndex,
     s32             vertexOffset,
     u32             firstInstance) {
-  if !(commandBuffer in CommandBuffers) {
-    vkErrorInvalidCommandBuffer(commandBuffer)
-  } else {
-    args := new!vkCmdDrawIndexedArgs(
-      IndexCount:     indexCount,
-      InstanceCount:  instanceCount,
-      FirstIndex:     firstIndex,
-      VertexOffset:   vertexOffset,
-      FirstInstance:  firstInstance
-    )
-
     cmdBuf := CommandBuffers[commandBuffer]
-    mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdDrawIndexed))
-    cmdBuf.BufferCommands.vkCmdDrawIndexed[mapPos] = args
+    if cmdBuf == null {
+      vkErrorInvalidCommandBuffer(commandBuffer)
+    } else {
+      mapPos := cmdBuf.BufferCommands.vkCmdDrawIndexedCount
 
-    AddCommand(commandBuffer, cmd_vkCmdDrawIndexed, mapPos)
+      oldArgs := cmdBuf.BufferCommands.vkCmdDrawIndexed[mapPos]
+      args := switch oldArgs == null {
+        case true: new!vkCmdDrawIndexedArgs()
+        case false: oldArgs
+      }
+
+      args.IndexCount = indexCount
+      args.InstanceCount = instanceCount
+      args.FirstIndex = firstIndex
+      args.VertexOffset = vertexOffset
+      args.FirstInstance = firstInstance
+
+      cmdBuf.BufferCommands.vkCmdDrawIndexed[mapPos] = args
+      cmdBuf.BufferCommands.vkCmdDrawIndexedCount = mapPos + 1
+
+      AddCommand(cmdBuf, cmd_vkCmdDrawIndexed, mapPos)
+    }
   }
-}
 
 @internal class vkCmdDrawIndirectArgs {
   VkBuffer     Buffer
@@ -302,25 +330,34 @@ sub void dovkCmdDrawIndirect(ref!vkCmdDrawIndirectArgs draw) {
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
 @executed_draw
-@threadsafe
 cmd void vkCmdDrawIndirect(
     VkCommandBuffer commandBuffer,
     VkBuffer        buffer,
     VkDeviceSize    offset,
     u32             drawCount,
     u32             stride) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
     if !(buffer in Buffers) { vkErrorInvalidBuffer(buffer) }
-    args := new!vkCmdDrawIndirectArgs(buffer, offset, drawCount, stride)
+    mapPos := cmdBuf.BufferCommands.vkCmdDrawIndirectCount
 
-    cmdBuf := CommandBuffers[commandBuffer]
+    oldArgs := cmdBuf.BufferCommands.vkCmdDrawIndirect[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdDrawIndirectArgs()
+      case false: oldArgs
+    }
 
-    mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdDrawIndirect))
+    args.Buffer = buffer
+    args.Offset = offset
+    args.DrawCount = drawCount
+    args.Stride = stride
+
     cmdBuf.BufferCommands.vkCmdDrawIndirect[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdDrawIndirectCount = mapPos + 1
 
-    AddCommand(commandBuffer, cmd_vkCmdDrawIndirect, mapPos)
+    AddCommand(cmdBuf, cmd_vkCmdDrawIndirect, mapPos)
   }
 }
 
@@ -364,24 +401,34 @@ sub void dovkCmdDrawIndexedIndirect(ref!vkCmdDrawIndexedIndirectArgs draw) {
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
 @executed_draw
-@threadsafe
 cmd void vkCmdDrawIndexedIndirect(
     VkCommandBuffer commandBuffer,
     VkBuffer        buffer,
     VkDeviceSize    offset,
     u32             drawCount,
     u32             stride) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
     if !(buffer in Buffers) { vkErrorInvalidBuffer(buffer) }
-    args := new!vkCmdDrawIndexedIndirectArgs(buffer, offset, drawCount, stride)
+    mapPos := cmdBuf.BufferCommands.vkCmdDrawIndexedIndirectCount
 
-    cmdBuf := CommandBuffers[commandBuffer]
-    mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdDrawIndexedIndirect))
+    oldArgs := cmdBuf.BufferCommands.vkCmdDrawIndexedIndirect[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdDrawIndexedIndirectArgs()
+      case false: oldArgs
+    }
+
+    args.Buffer = buffer
+    args.Offset = offset
+    args.DrawCount = drawCount
+    args.Stride = stride
+
     cmdBuf.BufferCommands.vkCmdDrawIndexedIndirect[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdDrawIndexedIndirectCount = mapPos + 1
 
-    AddCommand(commandBuffer, cmd_vkCmdDrawIndexedIndirect, mapPos)
+    AddCommand(cmdBuf, cmd_vkCmdDrawIndexedIndirect, mapPos)
   }
 }
 
@@ -403,22 +450,31 @@ sub void dovkCmdDispatch(ref!vkCmdDispatchArgs args) {
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
 @executed_draw
-@threadsafe
 cmd void vkCmdDispatch(
     VkCommandBuffer commandBuffer,
     u32             groupCountX,
     u32             groupCountY,
     u32             groupCountZ) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
-    args := new!vkCmdDispatchArgs(groupCountX, groupCountY, groupCountZ)
+    mapPos := cmdBuf.BufferCommands.vkCmdDispatchCount
 
-    cmdBuf := CommandBuffers[commandBuffer]
-    mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdDispatch))
+    oldArgs := cmdBuf.BufferCommands.vkCmdDispatch[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdDispatchArgs()
+      case false: oldArgs
+    }
+
+    args.GroupCountX = groupCountX
+    args.GroupCountY = groupCountY
+    args.GroupCountZ = groupCountZ
+
     cmdBuf.BufferCommands.vkCmdDispatch[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdDispatchCount = mapPos + 1
 
-    AddCommand(commandBuffer, cmd_vkCmdDispatch, mapPos)
+    AddCommand(cmdBuf, cmd_vkCmdDispatch, mapPos)
   }
 }
 
@@ -447,22 +503,30 @@ sub void dovkCmdDispatchIndirect(ref!vkCmdDispatchIndirectArgs dispatch) {
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
 @executed_draw
-@threadsafe
 cmd void vkCmdDispatchIndirect(
     VkCommandBuffer commandBuffer,
     VkBuffer        buffer,
     VkDeviceSize    offset) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
     if !(buffer in Buffers) { vkErrorInvalidBuffer(buffer) }
-    args := new!vkCmdDispatchIndirectArgs(buffer, offset)
+    mapPos := cmdBuf.BufferCommands.vkCmdDispatchIndirectCount
 
-    cmdBuf := CommandBuffers[commandBuffer]
-    mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdDispatchIndirect))
+    oldArgs := cmdBuf.BufferCommands.vkCmdDispatchIndirect[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdDispatchIndirectArgs()
+      case false: oldArgs
+    }
+
+    args.Buffer = buffer
+    args.Offset = offset
+
     cmdBuf.BufferCommands.vkCmdDispatchIndirect[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdDispatchIndirectCount = mapPos + 1
 
-    AddCommand(commandBuffer, cmd_vkCmdDispatchIndirect, mapPos)
+    AddCommand(cmdBuf, cmd_vkCmdDispatchIndirect, mapPos)
   }
 }
 

@@ -645,6 +645,7 @@ bool Vulkan::replayEnumeratePhysicalDevices(Stack* stack, bool pushReturn) {
 ¶
 bool Vulkan::replayCreateVkDebugReportCallback(Stack* stack, bool pushReturn) {
     uint32_t cmdLabel = ~0;
+    (void)(cmdLabel);
     auto pCallback = stack->pop<VkDebugReportCallbackEXT*>();
     auto pCreateInfo = stack->pop<VkDebugReportCallbackCreateInfoEXT const*>();
     auto instance = static_cast<size_val>(stack->pop<size_val>());
@@ -672,6 +673,7 @@ bool Vulkan::replayCreateVkDebugReportCallback(Stack* stack, bool pushReturn) {
 ¶
 bool Vulkan::replayDestroyVkDebugReportCallback(Stack* stack) {
     uint32_t cmdLabel = ~0;
+    (void)(cmdLabel);
     auto callback = stack->pop<uint64_t>();
     auto instance = static_cast<size_val>(stack->pop<size_val>());
     if (stack->isValid()) {

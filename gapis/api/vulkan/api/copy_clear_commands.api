@@ -179,14 +179,14 @@ sub void copyBufferToBuffer(ref!BufferObject dstBuf, VkDeviceSize dstOffset, ref
 
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
-@threadsafe
 cmd void vkCmdCopyBuffer(
     VkCommandBuffer     commandBuffer,
     VkBuffer            srcBuffer,
     VkBuffer            dstBuffer,
     u32                 regionCount,
     const VkBufferCopy* pRegions) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
     if !(srcBuffer in Buffers) {
@@ -195,21 +195,25 @@ cmd void vkCmdCopyBuffer(
       if !(dstBuffer in Buffers) {
         vkErrorInvalidBuffer(dstBuffer)
       } else {
-        cmdBuf := CommandBuffers[commandBuffer]
+        mapPos := cmdBuf.BufferCommands.vkCmdCopyBufferCount
+        oldArgs := cmdBuf.BufferCommands.vkCmdCopyBuffer[mapPos]
+        args := switch oldArgs == null {
+          case true: new!vkCmdCopyBufferArgs()
+          case false: oldArgs
+        }
+        args.SrcBuffer = srcBuffer
+        args.DstBuffer = dstBuffer
+        clear(args.CopyRegions)
 
-        args := new!vkCmdCopyBufferArgs(
-          SrcBuffer:  srcBuffer,
-          DstBuffer:  dstBuffer
-        )
         regions := pRegions[0:regionCount]
         for i in (0 .. regionCount) {
           args.CopyRegions[i] = regions[i]
         }
 
-        mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdCopyBuffer))
         cmdBuf.BufferCommands.vkCmdCopyBuffer[mapPos] = args
+        cmdBuf.BufferCommands.vkCmdCopyBufferCount = mapPos + 1
 
-        AddCommand(commandBuffer, cmd_vkCmdCopyBuffer, mapPos)
+        AddCommand(cmdBuf, cmd_vkCmdCopyBuffer, mapPos)
       }
     }
   }
@@ -360,7 +364,6 @@ sub void dovkCmdCopyImage(ref!vkCmdCopyImageArgs args) {
 
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
-@threadsafe
 cmd void vkCmdCopyImage(
     VkCommandBuffer    commandBuffer,
     VkImage            srcImage,
@@ -369,7 +372,8 @@ cmd void vkCmdCopyImage(
     VkImageLayout      dstImageLayout,
     u32                regionCount,
     const VkImageCopy* pRegions) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
     if !(srcImage in Images) {
@@ -378,21 +382,27 @@ cmd void vkCmdCopyImage(
       if !(dstImage in Images) {
         vkErrorInvalidImage(dstImage)
       } else {
-        cmdBuf := CommandBuffers[commandBuffer]
-        args := new!vkCmdCopyImageArgs(
-          SrcImage:        srcImage,
-          SrcImageLayout:  srcImageLayout,
-          DstImage:        dstImage,
-          DstImageLayout:  dstImageLayout
-        )
+        mapPos := cmdBuf.BufferCommands.vkCmdCopyImageCount
+        oldArgs := cmdBuf.BufferCommands.vkCmdCopyImage[mapPos]
+        args := switch oldArgs == null {
+          case true: new!vkCmdCopyImageArgs()
+          case false: oldArgs
+        }
+        clear(args.Regions)
+
+        args.SrcImage = srcImage
+        args.SrcImageLayout = srcImageLayout
+        args.DstImage = dstImage
+        args.DstImageLayout = dstImageLayout
+        
         regions := pRegions[0:regionCount]
         for i in (0 .. regionCount) {
           args.Regions[i] = regions[i]
         }
-        mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdCopyImage))
         cmdBuf.BufferCommands.vkCmdCopyImage[mapPos] = args
+        cmdBuf.BufferCommands.vkCmdCopyImageCount = mapPos + 1
 
-        AddCommand(commandBuffer, cmd_vkCmdCopyImage, mapPos)
+        AddCommand(cmdBuf, cmd_vkCmdCopyImage, mapPos)
       }
     }
   }
@@ -531,7 +541,6 @@ sub void dovkCmdBlitImage(ref!vkCmdBlitImageArgs args) {
 
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
-@threadsafe
 cmd void vkCmdBlitImage(
     VkCommandBuffer    commandBuffer,
     VkImage            srcImage,
@@ -541,7 +550,8 @@ cmd void vkCmdBlitImage(
     u32                regionCount,
     const VkImageBlit* pRegions,
     VkFilter           filter) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
     if !(srcImage in Images) {
@@ -550,24 +560,29 @@ cmd void vkCmdBlitImage(
       if !(dstImage in Images) {
         vkErrorInvalidImage(dstImage)
       } else {
-        cmdBuf := CommandBuffers[commandBuffer]
-        args := new!vkCmdBlitImageArgs(
-          SrcImage:        srcImage,
-          SrcImageLayout:  srcImageLayout,
-          DstImage:        dstImage,
-          DstImageLayout:  dstImageLayout,
-          Filter:          filter
-        )
+        mapPos := cmdBuf.BufferCommands.vkCmdBlitImageCount
+        oldArgs := cmdBuf.BufferCommands.vkCmdBlitImage[mapPos]
+        args := switch oldArgs == null {
+          case true: new!vkCmdBlitImageArgs()
+          case false: oldArgs
+        }
+        clear(args.Regions)
 
+        args.SrcImage = srcImage
+        args.SrcImageLayout = srcImageLayout
+        args.DstImage = dstImage
+        args.DstImageLayout = dstImageLayout
+        args.Filter = filter
+        
         regions := pRegions[0:regionCount]
         for i in (0 .. regionCount) {
           r := regions[i]
           args.Regions[as!u32(i)] = r
         }
-        mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdBlitImage))
         cmdBuf.BufferCommands.vkCmdBlitImage[mapPos] = args
+        cmdBuf.BufferCommands.vkCmdBlitImageCount = mapPos + 1
 
-        AddCommand(commandBuffer, cmd_vkCmdBlitImage, mapPos)
+        AddCommand(cmdBuf, cmd_vkCmdBlitImage, mapPos)
       }
     }
   }
@@ -709,7 +724,6 @@ sub void dovkCmdCopyBufferToImage(ref!vkCmdCopyBufferToImageArgs args) {
 
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
-@threadsafe
 cmd void vkCmdCopyBufferToImage(
     VkCommandBuffer          commandBuffer,
     VkBuffer                 srcBuffer,
@@ -717,7 +731,8 @@ cmd void vkCmdCopyBufferToImage(
     VkImageLayout            dstImageLayout,
     u32                      regionCount,
     const VkBufferImageCopy* pRegions) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
     if !(srcBuffer in Buffers) {
@@ -726,20 +741,26 @@ cmd void vkCmdCopyBufferToImage(
       if !(dstImage in Images) {
         vkErrorInvalidImage(dstImage)
       } else {
-        cmdBuf := CommandBuffers[commandBuffer]
-
+        mapPos := cmdBuf.BufferCommands.vkCmdCopyBufferToImageCount
+        oldArgs := cmdBuf.BufferCommands.vkCmdCopyBufferToImage[mapPos]
+        args := switch oldArgs == null {
+          case true: new!vkCmdCopyBufferToImageArgs()
+          case false: oldArgs
+        }
+        args.SrcBuffer = srcBuffer
+        args.DstImage = dstImage
+        args.Layout = dstImageLayout
+        
         regions := pRegions[0:regionCount]
-        read(regions)
-        args := new!vkCmdCopyBufferToImageArgs(srcBuffer, dstImage, dstImageLayout)
         for i in (0 .. regionCount) {
           r := regions[i]
           args.Regions[as!u32(i)] = r
         }
 
-        mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdCopyBufferToImage))
         cmdBuf.BufferCommands.vkCmdCopyBufferToImage[mapPos] = args
+        cmdBuf.BufferCommands.vkCmdCopyBufferToImageCount = mapPos + 1
 
-        AddCommand(commandBuffer, cmd_vkCmdCopyBufferToImage, mapPos)
+        AddCommand(cmdBuf, cmd_vkCmdCopyBufferToImage, mapPos)
       }
     }
   }
@@ -762,7 +783,6 @@ sub void dovkCmdCopyImageToBuffer(ref!vkCmdCopyImageToBufferArgs args) {
 
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
-@threadsafe
 cmd void vkCmdCopyImageToBuffer(
     VkCommandBuffer          commandBuffer,
     VkImage                  srcImage,
@@ -770,7 +790,8 @@ cmd void vkCmdCopyImageToBuffer(
     VkBuffer                 dstBuffer,
     u32                      regionCount,
     const VkBufferImageCopy* pRegions) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
     if !(dstBuffer in Buffers) {
@@ -779,23 +800,28 @@ cmd void vkCmdCopyImageToBuffer(
       if !(srcImage in Images) {
         vkErrorInvalidImage(srcImage)
       } else {
-        cmdBuf := CommandBuffers[commandBuffer]
-
+        mapPos := cmdBuf.BufferCommands.vkCmdCopyImageToBufferCount
+        oldArgs := cmdBuf.BufferCommands.vkCmdCopyImageToBuffer[mapPos]
+        args := switch oldArgs == null {
+          case true: new!vkCmdCopyImageToBufferArgs()
+          case false: oldArgs
+        }
+        clear(args.Regions)
+        
+        args.SrcImage = srcImage
+        args.SrcImageLayout = srcImageLayout
+        args.DstBuffer = dstBuffer
+        
         regions := pRegions[0:regionCount]
-        args := new!vkCmdCopyImageToBufferArgs(
-          SrcImage:        srcImage,
-          SrcImageLayout:  srcImageLayout,
-          DstBuffer:       dstBuffer,
-        )
         for i in (0 .. regionCount) {
           r := regions[i]
           args.Regions[as!u32(i)] = r
         }
 
-        mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdCopyImageToBuffer))
         cmdBuf.BufferCommands.vkCmdCopyImageToBuffer[mapPos] = args
+        cmdBuf.BufferCommands.vkCmdCopyImageToBufferCount = mapPos + 1
 
-        AddCommand(commandBuffer, cmd_vkCmdCopyImageToBuffer, mapPos)
+        AddCommand(cmdBuf, cmd_vkCmdCopyImageToBuffer, mapPos)
       }
     }
   }
@@ -823,32 +849,36 @@ sub void dovkCmdUpdateBuffer(ref!vkCmdUpdateBufferArgs args) {
 
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
-@threadsafe
 cmd void vkCmdUpdateBuffer(
     VkCommandBuffer commandBuffer,
     VkBuffer        dstBuffer,
     VkDeviceSize    dstOffset,
     VkDeviceSize    dataSize,
     const void*     pData) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
     if !(dstBuffer in Buffers) {
       vkErrorInvalidBuffer(dstBuffer)
     } else {
-      cmdBuf := CommandBuffers[commandBuffer]
+      mapPos := cmdBuf.BufferCommands.vkCmdUpdateBufferCount
 
-      args := new!vkCmdUpdateBufferArgs(
-        dstBuffer,
-        dstOffset,
-        dataSize,
-      )
+      oldArgs := cmdBuf.BufferCommands.vkCmdUpdateBuffer[mapPos]
+      args := switch oldArgs == null {
+        case true: new!vkCmdUpdateBufferArgs()
+        case false: oldArgs
+      }
+
+      args.DstBuffer = dstBuffer
+      args.DstOffset = dstOffset
+      args.DataSize = dataSize
       args.Data = clone(as!u8*(pData)[0:dataSize])
 
-      mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdUpdateBuffer))
       cmdBuf.BufferCommands.vkCmdUpdateBuffer[mapPos] = args
+      cmdBuf.BufferCommands.vkCmdUpdateBufferCount = mapPos + 1
 
-      AddCommand(commandBuffer, cmd_vkCmdUpdateBuffer, mapPos)
+      AddCommand(cmdBuf, cmd_vkCmdUpdateBuffer, mapPos)
     }
   }
 }
@@ -875,32 +905,35 @@ sub void dovkCmdFillBuffer(ref!vkCmdFillBufferArgs args) {
 
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
-@threadsafe
 cmd void vkCmdFillBuffer(
     VkCommandBuffer commandBuffer,
     VkBuffer        dstBuffer,
     VkDeviceSize    dstOffset,
     VkDeviceSize    size,
     u32             data) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
     if !(dstBuffer in Buffers) {
       vkErrorInvalidBuffer(dstBuffer)
     } else {
-      cmdBuf := CommandBuffers[commandBuffer]
+      mapPos := cmdBuf.BufferCommands.vkCmdFillBufferCount
+      oldArgs := cmdBuf.BufferCommands.vkCmdFillBuffer[mapPos]
+      args := switch oldArgs == null {
+        case true: new!vkCmdFillBufferArgs()
+        case false: oldArgs
+      }
 
-      args := new!vkCmdFillBufferArgs(
-        dstBuffer,
-        dstOffset,
-        size,
-        data
-      )
+      args.Buffer = dstBuffer
+      args.DstOffset = dstOffset
+      args.Size = size
+      args.Data = data
 
-      mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdFillBuffer))
       cmdBuf.BufferCommands.vkCmdFillBuffer[mapPos] = args
+      cmdBuf.BufferCommands.vkCmdFillBufferCount = mapPos + 1
 
-      AddCommand(commandBuffer, cmd_vkCmdFillBuffer, mapPos)
+      AddCommand(cmdBuf, cmd_vkCmdFillBuffer, mapPos)
     }
   }
 }
@@ -924,7 +957,6 @@ sub void dovkCmdClearColorImage(ref!vkCmdClearColorImageArgs args) {
 
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
-@threadsafe
 cmd void vkCmdClearColorImage(
     VkCommandBuffer                commandBuffer,
     VkImage                        image,
@@ -932,7 +964,8 @@ cmd void vkCmdClearColorImage(
     const VkClearColorValue*       pColor,
     u32                            rangeCount,
     const VkImageSubresourceRange* pRanges) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
     if !(image in Images) {
@@ -941,22 +974,28 @@ cmd void vkCmdClearColorImage(
       if pColor == null {
         vkErrorNullPointer("VkClearColorValue")
       } else {
-        cmdBuf := CommandBuffers[commandBuffer]
+        mapPos := cmdBuf.BufferCommands.vkCmdClearColorImageCount
         color := pColor[0]
         ranges := pRanges[0:rangeCount]
-        args := new!vkCmdClearColorImageArgs(
-          Image:        image,
-          ImageLayout:  imageLayout,
-          Color:        color,
-        )
+
+        oldArgs := cmdBuf.BufferCommands.vkCmdClearColorImage[mapPos]
+        args := switch oldArgs == null {
+          case true: new!vkCmdClearColorImageArgs()
+          case false: oldArgs
+        }
+        clear(args.Ranges)
+
+        args.Image = image
+        args.ImageLayout = imageLayout
+        args.Color = color
         for i in (0 .. rangeCount) {
           args.Ranges[as!u32(i)] = ranges[i]
         }
 
-        mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdClearColorImage))
         cmdBuf.BufferCommands.vkCmdClearColorImage[mapPos] = args
+        cmdBuf.BufferCommands.vkCmdClearColorImageCount = mapPos + 1
 
-        AddCommand(commandBuffer, cmd_vkCmdClearColorImage, mapPos)
+        AddCommand(cmdBuf, cmd_vkCmdClearColorImage, mapPos)
       }
     }
   }
@@ -981,7 +1020,6 @@ sub void dovkCmdClearDepthStencilImage(ref!vkCmdClearDepthStencilImageArgs args)
 
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
-@threadsafe
 cmd void vkCmdClearDepthStencilImage(
     VkCommandBuffer                 commandBuffer,
     VkImage                         image,
@@ -989,7 +1027,8 @@ cmd void vkCmdClearDepthStencilImage(
     const VkClearDepthStencilValue* pDepthStencil,
     u32                             rangeCount,
     const VkImageSubresourceRange*  pRanges) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
     if !(image in Images) {
@@ -998,22 +1037,28 @@ cmd void vkCmdClearDepthStencilImage(
       if pDepthStencil == null {
         vkErrorNullPointer("VkClearDepthStencilValue")
       } else {
-        cmdBuf := CommandBuffers[commandBuffer]
+        mapPos := cmdBuf.BufferCommands.vkCmdClearDepthStencilImageCount
         depthStencil := pDepthStencil[0]
         ranges := pRanges[0:rangeCount]
-        args := new!vkCmdClearDepthStencilImageArgs(
-          Image:         image,
-          ImageLayout:   imageLayout,
-          DepthStencil:  depthStencil,
-        )
+
+        oldArgs := cmdBuf.BufferCommands.vkCmdClearDepthStencilImage[mapPos]
+        args := switch oldArgs == null {
+          case true: new!vkCmdClearDepthStencilImageArgs()
+          case false: oldArgs
+        }
+        clear(args.Ranges)
+
+        args.Image = image
+        args.ImageLayout = imageLayout
+        args.DepthStencil = depthStencil
         for i in (0 .. rangeCount) {
           args.Ranges[as!u32(i)] = ranges[i]
         }
 
-        mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdClearDepthStencilImage))
         cmdBuf.BufferCommands.vkCmdClearDepthStencilImage[mapPos] = args
+        cmdBuf.BufferCommands.vkCmdClearDepthStencilImageCount = mapPos + 1
 
-        AddCommand(commandBuffer, cmd_vkCmdClearDepthStencilImage, mapPos)
+        AddCommand(cmdBuf, cmd_vkCmdClearDepthStencilImage, mapPos)
       }
     }
   }
@@ -1032,19 +1077,26 @@ sub void dovkCmdClearAttachments(ref!vkCmdClearAttachmentsArgs args) {
 
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
-@threadsafe
 cmd void vkCmdClearAttachments(
     VkCommandBuffer          commandBuffer,
     u32                      attachmentCount,
     const VkClearAttachment* pAttachments,
     u32                      rectCount,
     const VkClearRect*       pRects) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
-    cmdBuf := CommandBuffers[commandBuffer]
+    mapPos := cmdBuf.BufferCommands.vkCmdClearAttachmentsCount
 
-    args := new!vkCmdClearAttachmentsArgs()
+    oldArgs := cmdBuf.BufferCommands.vkCmdClearAttachments[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdClearAttachmentsArgs()
+      case false: oldArgs
+    }
+    clear(args.Attachments)
+    clear(args.Rects)
+
     attachments := pAttachments[0:attachmentCount]
     rects := pRects[0:rectCount]
     for i in (0 .. attachmentCount) {
@@ -1054,10 +1106,10 @@ cmd void vkCmdClearAttachments(
       args.Rects[as!u32(i)] = rects[i]
     }
 
-    mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdClearAttachments))
     cmdBuf.BufferCommands.vkCmdClearAttachments[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdClearAttachmentsCount = mapPos + 1
 
-    AddCommand(commandBuffer, cmd_vkCmdClearAttachments, mapPos)
+    AddCommand(cmdBuf, cmd_vkCmdClearAttachments, mapPos)
   }
 }
 
@@ -1099,7 +1151,6 @@ sub void dovkCmdResolveImage(ref!vkCmdResolveImageArgs args) {
 
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
-@threadsafe
 cmd void vkCmdResolveImage(
     VkCommandBuffer       commandBuffer,
     VkImage               srcImage,
@@ -1108,7 +1159,8 @@ cmd void vkCmdResolveImage(
     VkImageLayout         dstImageLayout,
     u32                   regionCount,
     const VkImageResolve* pRegions) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
     if !(srcImage in Images) {
@@ -1117,22 +1169,29 @@ cmd void vkCmdResolveImage(
       if !(dstImage in Images) {
         vkErrorInvalidImage(dstImage)
       } else {
-        cmdBuf := CommandBuffers[commandBuffer]
-        args := new!vkCmdResolveImageArgs(
-          SrcImage:        srcImage,
-          SrcImageLayout:  srcImageLayout,
-          DstImage:        dstImage,
-          DstImageLayout:  dstImageLayout
-        )
+        mapPos := cmdBuf.BufferCommands.vkCmdResolveImageCount
+
+        oldArgs := cmdBuf.BufferCommands.vkCmdResolveImage[mapPos]
+        args := switch oldArgs == null {
+          case true: new!vkCmdResolveImageArgs()
+          case false: oldArgs
+        }
+        clear(args.ResolveRegions)
+
+        args.SrcImage = srcImage
+        args.SrcImageLayout = srcImageLayout
+        args.DstImage = dstImage
+        args.DstImageLayout = dstImageLayout
+
         regions := pRegions[0:regionCount]
         for i in (0 .. regionCount) {
           args.ResolveRegions[as!u32(i)] = regions[i]
         }
 
-        mapPos := as!u32(len(cmdBuf.BufferCommands.vkCmdResolveImage))
         cmdBuf.BufferCommands.vkCmdResolveImage[mapPos] = args
+        cmdBuf.BufferCommands.vkCmdResolveImageCount = mapPos + 1
 
-        AddCommand(commandBuffer, cmd_vkCmdResolveImage, mapPos)
+        AddCommand(cmdBuf, cmd_vkCmdResolveImage, mapPos)
       }
     }
   }

@@ -305,7 +305,7 @@ cmd VkResult vkCreateGraphicsPipelines(
         spec_data.Data = clone(as!u8*(spec_info.pData)[0:spec_info.dataSize])
         stage_data.Specialization = spec_data
       }
-      
+
       if stage_data.Module.Descriptors != null {
         moduleDescriptors := stage_data.Module.Descriptors.Descriptors[as!string(stage_create_info.pName)]
         for _, _, d in moduleDescriptors {
@@ -924,27 +924,36 @@ sub void dovkCmdBindPipeline(ref!vkCmdBindPipelineArgs args) {
     lci := lastComputeInfo()
     lci.ComputePipeline = ComputePipelines[args.Pipeline]
   } else {
-    ldi := lastDrawInfo()    
+    ldi := lastDrawInfo()
     ldi.GraphicsPipeline = GraphicsPipelines[args.Pipeline]
   }
 }
 
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
-@threadsafe
+@fastpath
 cmd void vkCmdBindPipeline(
     VkCommandBuffer     commandBuffer,
     VkPipelineBindPoint pipelineBindPoint,
     VkPipeline          pipeline) {
-  if !(commandBuffer in CommandBuffers) { vkErrorInvalidCommandBuffer(commandBuffer) }
+    cmdBuf := CommandBuffers[commandBuffer]
+    //if cmdBuf == null {
+    //  vkErrorInvalidCommandBuffer(commandBuffer)
+    //} else {
+      mapPos := cmdBuf.BufferCommands.vkCmdBindPipelineCount
 
-  mapPos := as!u32(len(CommandBuffers[commandBuffer].BufferCommands.vkCmdBindPipeline))
-  CommandBuffers[commandBuffer].BufferCommands.vkCmdBindPipeline[mapPos] =
-  new!vkCmdBindPipelineArgs(
-    PipelineBindPoint: pipelineBindPoint,
-    Pipeline:          pipeline)
+      oldArgs := cmdBuf.BufferCommands.vkCmdBindPipeline[mapPos]
+      args := switch oldArgs == null {
+        case true: new!vkCmdBindPipelineArgs()
+        case false: oldArgs
+      }
+      args.PipelineBindPoint = pipelineBindPoint
+      args.Pipeline = pipeline
+      cmdBuf.BufferCommands.vkCmdBindPipeline[mapPos] = args
+      cmdBuf.BufferCommands.vkCmdBindPipelineCount = mapPos + 1
 
-  AddCommand(commandBuffer, cmd_vkCmdBindPipeline, mapPos)
+      AddCommand(cmdBuf, cmd_vkCmdBindPipeline, mapPos)
+    //}
 }
 
 @internal class vkCmdSetViewportArgs {
@@ -962,27 +971,38 @@ sub void dovkCmdSetViewport(ref!vkCmdSetViewportArgs args) {
 
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
-@threadsafe
 cmd void vkCmdSetViewport(
     VkCommandBuffer   commandBuffer,
     u32               firstViewport,
     u32               viewportCount,
     const VkViewport* pViewports) {
-  if !(commandBuffer in CommandBuffers) { vkErrorInvalidCommandBuffer(commandBuffer) }
-  if pViewports == null { vkErrorNullPointer("VkViewport") }
-  viewports := pViewports[0:viewportCount]
-  args := new!vkCmdSetViewportArgs(
-    firstViewport
-  )
-  for i in (0 .. viewportCount) {
-    args.Viewports[i] = viewports[i]
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
+    vkErrorInvalidCommandBuffer(commandBuffer)
+  } else {
+    if pViewports == null { vkErrorNullPointer("VkViewport") }
+    viewports := pViewports[0:viewportCount]
+
+    mapPos := cmdBuf.BufferCommands.vkCmdSetViewportCount
+
+    oldArgs := cmdBuf.BufferCommands.vkCmdSetViewport[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdSetViewportArgs()
+      case false: oldArgs
+    }
+    clear(args.Viewports)
+
+    args.FirstViewport = firstViewport
+
+    for i in (0 .. viewportCount) {
+      args.Viewports[i] = viewports[i]
+    }
+
+    cmdBuf.BufferCommands.vkCmdSetViewport[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdSetViewportCount = mapPos +  1
+
+    AddCommand(cmdBuf, cmd_vkCmdSetViewport, mapPos)
   }
-
-  mapPos := as!u32(len(CommandBuffers[commandBuffer].BufferCommands.vkCmdSetViewport))
-  CommandBuffers[commandBuffer].BufferCommands.vkCmdSetViewport[mapPos] =
-  args
-
-  AddCommand(commandBuffer, cmd_vkCmdSetViewport, mapPos)
 }
 
 @internal class vkCmdSetScissorArgs {
@@ -1000,27 +1020,36 @@ sub void dovkCmdSetScissor(ref!vkCmdSetScissorArgs args) {
 
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
-@threadsafe
 cmd void vkCmdSetScissor(
     VkCommandBuffer commandBuffer,
     u32             firstScissor,
     u32             scissorCount,
     const VkRect2D* pScissors) {
-  if !(commandBuffer in CommandBuffers) { vkErrorInvalidCommandBuffer(commandBuffer) }
-  if pScissors == null { vkErrorNullPointer("VkRect2D") }
-  scissors := pScissors[0:scissorCount]
-  args := new!vkCmdSetScissorArgs(
-    firstScissor
-  )
-  for i in (0 .. scissorCount) {
-    args.Scissors[i] = scissors[i]
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
+    vkErrorInvalidCommandBuffer(commandBuffer)
+  } else {
+    if pScissors == null { vkErrorNullPointer("VkRect2D") }
+    scissors := pScissors[0:scissorCount]
+
+    mapPos := cmdBuf.BufferCommands.vkCmdSetScissorCount
+
+    oldArgs := cmdBuf.BufferCommands.vkCmdSetScissor[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdSetScissorArgs()
+      case false: oldArgs
+    }
+    clear(args.Scissors)
+
+    args.FirstScissor = firstScissor
+    for i in (0 .. scissorCount) {
+      args.Scissors[i] = scissors[i]
+    }
+    cmdBuf.BufferCommands.vkCmdSetScissor[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdSetScissorCount = mapPos + 1
+
+    AddCommand(cmdBuf, cmd_vkCmdSetScissor, mapPos)
   }
-
-  mapPos := as!u32(len(CommandBuffers[commandBuffer].BufferCommands.vkCmdSetScissor))
-  CommandBuffers[commandBuffer].BufferCommands.vkCmdSetScissor[mapPos] =
-  args
-
-  AddCommand(commandBuffer, cmd_vkCmdSetScissor, mapPos)
 }
 
 @internal class vkCmdSetLineWidthArgs {
@@ -1034,18 +1063,27 @@ sub void dovkCmdSetLineWidth(ref!vkCmdSetLineWidthArgs args) {
 
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
-@threadsafe
 cmd void vkCmdSetLineWidth(
     VkCommandBuffer commandBuffer,
     f32             lineWidth) {
-  if !(commandBuffer in CommandBuffers) { vkErrorInvalidCommandBuffer(commandBuffer) }
-  args := new!vkCmdSetLineWidthArgs(lineWidth)
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
+    vkErrorInvalidCommandBuffer(commandBuffer)
+  } else {
+    mapPos := cmdBuf.BufferCommands.vkCmdSetLineWidthCount
 
-  mapPos := as!u32(len(CommandBuffers[commandBuffer].BufferCommands.vkCmdSetLineWidth))
-  CommandBuffers[commandBuffer].BufferCommands.vkCmdSetLineWidth[mapPos] =
-  args
+    oldArgs := cmdBuf.BufferCommands.vkCmdSetLineWidth[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdSetLineWidthArgs(as!f32(0.0))
+      case false: oldArgs
+    }
+    args.LineWidth = lineWidth
 
-  AddCommand(commandBuffer, cmd_vkCmdSetLineWidth, mapPos)
+    cmdBuf.BufferCommands.vkCmdSetLineWidth[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdSetLineWidthCount = mapPos + 1
+
+    AddCommand(cmdBuf, cmd_vkCmdSetLineWidth, mapPos)
+  }
 }
 
 @internal class vkCmdSetDepthBiasArgs {
@@ -1063,24 +1101,32 @@ sub void dovkCmdSetDepthBias(ref!vkCmdSetDepthBiasArgs args) {
 
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
-@threadsafe
 cmd void vkCmdSetDepthBias(
     VkCommandBuffer commandBuffer,
     f32             depthBiasConstantFactor,
     f32             depthBiasClamp,
     f32             depthBiasSlopeFactor) {
-  if !(commandBuffer in CommandBuffers) { vkErrorInvalidCommandBuffer(commandBuffer) }
-  args := new!vkCmdSetDepthBiasArgs(
-    depthBiasConstantFactor,
-    depthBiasClamp,
-    depthBiasSlopeFactor
-  )
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
+    vkErrorInvalidCommandBuffer(commandBuffer)
+  } else {
+    mapPos := cmdBuf.BufferCommands.vkCmdSetDepthBiasCount
 
-  mapPos := as!u32(len(CommandBuffers[commandBuffer].BufferCommands.vkCmdSetDepthBias))
-  CommandBuffers[commandBuffer].BufferCommands.vkCmdSetDepthBias[mapPos] =
-  args
+    oldArgs := cmdBuf.BufferCommands.vkCmdSetDepthBias[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdSetDepthBiasArgs()
+      case false: oldArgs
+    }
 
-  AddCommand(commandBuffer, cmd_vkCmdSetDepthBias, mapPos)
+    args.DepthBiasConstantFactor = depthBiasConstantFactor
+    args.DepthBiasClamp = depthBiasClamp
+    args.DepthBiasSlopeFactor = depthBiasSlopeFactor
+
+    cmdBuf.BufferCommands.vkCmdSetDepthBias[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdSetDepthBiasCount = mapPos + 1
+
+    AddCommand(cmdBuf, cmd_vkCmdSetDepthBias, mapPos)
+  }
 }
 
 @internal class vkCmdSetBlendConstantsArgs {
@@ -1100,22 +1146,31 @@ sub void dovkCmdSetBlendConstants(ref!vkCmdSetBlendConstantsArgs args) {
 
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
-@threadsafe
 cmd void vkCmdSetBlendConstants(
               VkCommandBuffer commandBuffer,
     @readonly f32[4]          blendConstants) {
-  if !(commandBuffer in CommandBuffers) { vkErrorInvalidCommandBuffer(commandBuffer) }
-  args := new!vkCmdSetBlendConstantsArgs(
-    blendConstants[0],
-    blendConstants[1],
-    blendConstants[2],
-    blendConstants[3])
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
+    vkErrorInvalidCommandBuffer(commandBuffer)
+  } else {
+    mapPos := cmdBuf.BufferCommands.vkCmdSetBlendConstantsCount
 
-  mapPos := as!u32(len(CommandBuffers[commandBuffer].BufferCommands.vkCmdSetBlendConstants))
-  CommandBuffers[commandBuffer].BufferCommands.vkCmdSetBlendConstants[mapPos] =
-  args
+    oldArgs := cmdBuf.BufferCommands.vkCmdSetBlendConstants[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdSetBlendConstantsArgs()
+      case false: oldArgs
+    }
 
-  AddCommand(commandBuffer, cmd_vkCmdSetBlendConstants, mapPos)
+    args.R = blendConstants[0]
+    args.G = blendConstants[1]
+    args.B = blendConstants[2]
+    args.A = blendConstants[3]
+
+    cmdBuf.BufferCommands.vkCmdSetBlendConstants[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdSetBlendConstantsCount = mapPos  + 1
+
+    AddCommand(cmdBuf, cmd_vkCmdSetBlendConstants, mapPos)
+  }
 }
 
 @internal class vkCmdSetDepthBoundsArgs {
@@ -1131,21 +1186,29 @@ sub void dovkCmdSetDepthBounds(ref!vkCmdSetDepthBoundsArgs args) {
 
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
-@threadsafe
 cmd void vkCmdSetDepthBounds(
     VkCommandBuffer commandBuffer,
     f32             minDepthBounds,
     f32             maxDepthBounds) {
-  if !(commandBuffer in CommandBuffers) { vkErrorInvalidCommandBuffer(commandBuffer) }
-  args := new!vkCmdSetDepthBoundsArgs(
-    minDepthBounds,
-    maxDepthBounds)
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
+    vkErrorInvalidCommandBuffer(commandBuffer)
+  } else {
+    mapPos := cmdBuf.BufferCommands.vkCmdSetDepthBoundsCount
 
-  mapPos := as!u32(len(CommandBuffers[commandBuffer].BufferCommands.vkCmdSetDepthBounds))
-  CommandBuffers[commandBuffer].BufferCommands.vkCmdSetDepthBounds[mapPos] =
-  args
+    oldArgs := cmdBuf.BufferCommands.vkCmdSetDepthBounds[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdSetDepthBoundsArgs()
+      case false: oldArgs
+    }
+    args.MinDepthBounds = minDepthBounds
+    args.MaxDepthBounds = maxDepthBounds
 
-  AddCommand(commandBuffer, cmd_vkCmdSetDepthBounds, mapPos)
+    cmdBuf.BufferCommands.vkCmdSetDepthBounds[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdSetDepthBoundsCount = mapPos + 1
+
+    AddCommand(cmdBuf, cmd_vkCmdSetDepthBounds, mapPos)
+  }
 }
 
 @internal class vkCmdSetStencilCompareMaskArgs {
@@ -1165,22 +1228,30 @@ sub void dovkCmdSetStencilCompareMask(ref!vkCmdSetStencilCompareMaskArgs args) {
 
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
-@threadsafe
 cmd void vkCmdSetStencilCompareMask(
     VkCommandBuffer    commandBuffer,
     VkStencilFaceFlags faceMask,
     u32                compareMask) {
-  if !(commandBuffer in CommandBuffers) { vkErrorInvalidCommandBuffer(commandBuffer) }
-  args := new!vkCmdSetStencilCompareMaskArgs(
-    faceMask,
-    compareMask
-  )
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
+    vkErrorInvalidCommandBuffer(commandBuffer)
+  } else {
+    mapPos := cmdBuf.BufferCommands.vkCmdSetStencilCompareMaskCount
 
-  mapPos := as!u32(len(CommandBuffers[commandBuffer].BufferCommands.vkCmdSetStencilCompareMask))
-  CommandBuffers[commandBuffer].BufferCommands.vkCmdSetStencilCompareMask[mapPos] =
-  args
+    oldArgs := cmdBuf.BufferCommands.vkCmdSetStencilCompareMask[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdSetStencilCompareMaskArgs()
+      case false: oldArgs
+    }
 
-  AddCommand(commandBuffer, cmd_vkCmdSetStencilCompareMask, mapPos)
+    args.FaceMask = faceMask
+    args.CompareMask = compareMask
+
+    cmdBuf.BufferCommands.vkCmdSetStencilCompareMask[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdSetStencilCompareMaskCount = mapPos + 1
+
+    AddCommand(cmdBuf, cmd_vkCmdSetStencilCompareMask, mapPos)
+  }
 }
 
 @internal class vkCmdSetStencilWriteMaskArgs {
@@ -1200,22 +1271,30 @@ sub void dovkCmdSetStencilWriteMask(ref!vkCmdSetStencilWriteMaskArgs args) {
 
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
-@threadsafe
 cmd void vkCmdSetStencilWriteMask(
     VkCommandBuffer    commandBuffer,
     VkStencilFaceFlags faceMask,
     u32                writeMask) {
-  if !(commandBuffer in CommandBuffers) { vkErrorInvalidCommandBuffer(commandBuffer) }
-  args := new!vkCmdSetStencilWriteMaskArgs(
-    faceMask,
-    writeMask
-  )
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
+    vkErrorInvalidCommandBuffer(commandBuffer)
+  } else {
+    mapPos := cmdBuf.BufferCommands.vkCmdSetStencilWriteMaskCount
 
-  mapPos := as!u32(len(CommandBuffers[commandBuffer].BufferCommands.vkCmdSetStencilWriteMask))
-  CommandBuffers[commandBuffer].BufferCommands.vkCmdSetStencilWriteMask[mapPos] =
-  args
+    oldArgs := cmdBuf.BufferCommands.vkCmdSetStencilWriteMask[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdSetStencilWriteMaskArgs()
+      case false: oldArgs
+    }
 
-  AddCommand(commandBuffer, cmd_vkCmdSetStencilWriteMask, mapPos)
+    args.FaceMask = faceMask
+    args.WriteMask = writeMask
+
+    cmdBuf.BufferCommands.vkCmdSetStencilWriteMask[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdSetStencilWriteMaskCount = mapPos + 1
+
+    AddCommand(cmdBuf, cmd_vkCmdSetStencilWriteMask, mapPos)
+  }
 }
 
 @internal class vkCmdSetStencilReferenceArgs {
@@ -1235,22 +1314,30 @@ sub void dovkCmdSetStencilReference(ref!vkCmdSetStencilReferenceArgs args) {
 
 @threadSafety("app")
 @indirect("VkCommandBuffer", "VkDevice")
-@threadsafe
 cmd void vkCmdSetStencilReference(
     VkCommandBuffer    commandBuffer,
     VkStencilFaceFlags faceMask,
     u32                reference) {
-  if !(commandBuffer in CommandBuffers) { vkErrorInvalidCommandBuffer(commandBuffer) }
-  args := new!vkCmdSetStencilReferenceArgs(
-    faceMask,
-    reference
-  )
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
+    vkErrorInvalidCommandBuffer(commandBuffer)
+  } else {
+    mapPos := cmdBuf.BufferCommands.vkCmdSetStencilReferenceCount
 
-  mapPos := as!u32(len(CommandBuffers[commandBuffer].BufferCommands.vkCmdSetStencilReference))
-  CommandBuffers[commandBuffer].BufferCommands.vkCmdSetStencilReference[mapPos] =
-  args
+    oldArgs := cmdBuf.BufferCommands.vkCmdSetStencilReference[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdSetStencilReferenceArgs()
+      case false: oldArgs
+    }
 
-  AddCommand(commandBuffer, cmd_vkCmdSetStencilReference, mapPos)
+    args.FaceMask = faceMask
+    args.Reference = reference
+
+    cmdBuf.BufferCommands.vkCmdSetStencilReference[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdSetStencilReferenceCount = mapPos + 1
+
+    AddCommand(cmdBuf, cmd_vkCmdSetStencilReference, mapPos)
+  }
 }
 
 @internal class MutablePipelineLayout {

@@ -365,20 +365,26 @@ cmd void vkCmdSetEvent(
     VkCommandBuffer      commandBuffer,
     VkEvent              event,
     VkPipelineStageFlags stageMask) {
-  if !(event in Events) { vkErrorInvalidEvent(event) }
-  args := new!vkCmdSetEventArgs(
-    Event:      event,
-    StageMask:  stageMask
-  )
-
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
-    mapPos := as!u32(len(CommandBuffers[commandBuffer].BufferCommands.vkCmdSetEvent))
-    CommandBuffers[commandBuffer].BufferCommands.vkCmdSetEvent[mapPos] =
-    args
+    if !(event in Events) { vkErrorInvalidEvent(event) }
+    mapPos := cmdBuf.BufferCommands.vkCmdSetEventCount
 
-    AddCommand(commandBuffer, cmd_vkCmdSetEvent, mapPos)
+    oldArgs := cmdBuf.BufferCommands.vkCmdSetEvent[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdSetEventArgs()
+      case false: oldArgs
+    }
+    
+    args.Event = event
+    args.StageMask = stageMask
+
+    CommandBuffers[commandBuffer].BufferCommands.vkCmdSetEvent[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdSetEventCount = mapPos + 1
+
+    AddCommand(cmdBuf, cmd_vkCmdSetEvent, mapPos)
   }
 }
 
@@ -399,30 +405,37 @@ cmd void vkCmdResetEvent(
     VkCommandBuffer      commandBuffer,
     VkEvent              event,
     VkPipelineStageFlags stageMask) {
-  if !(event in Events) { vkErrorInvalidEvent(event) }
-  args := new!vkCmdResetEventArgs(
-    Event:      event,
-    StageMask:  stageMask,
-  )
-
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
-    mapPos := as!u32(len(CommandBuffers[commandBuffer].BufferCommands.vkCmdResetEvent))
+    if !(event in Events) { vkErrorInvalidEvent(event) }
+    mapPos := cmdBuf.BufferCommands.vkCmdResetEventCount
+
+    oldArgs := cmdBuf.BufferCommands.vkCmdResetEvent[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdResetEventArgs()
+      case false: oldArgs
+    }
+    
+    args.Event = event
+    args.StageMask = stageMask
+
     CommandBuffers[commandBuffer].BufferCommands.vkCmdResetEvent[mapPos] =
     args
+    cmdBuf.BufferCommands.vkCmdResetEventCount = mapPos + 1
 
-    AddCommand(commandBuffer, cmd_vkCmdResetEvent, mapPos)
+    AddCommand(cmdBuf, cmd_vkCmdResetEvent, mapPos)
   }
 }
 
 @internal class vkCmdWaitEventsArgs {
-  map!(u32, VkEvent)               Events
+  dense_map!(u32, VkEvent)               Events
   VkPipelineStageFlags             SrcStageMask
   VkPipelineStageFlags             DstStageMask
-  map!(u32, VkMemoryBarrier)       MemoryBarriers
-  map!(u32, VkBufferMemoryBarrier) BufferMemoryBarriers
-  map!(u32, VkImageMemoryBarrier)  ImageMemoryBarriers
+  dense_map!(u32, VkMemoryBarrier)       MemoryBarriers
+  dense_map!(u32, VkBufferMemoryBarrier) BufferMemoryBarriers
+  dense_map!(u32, VkImageMemoryBarrier)  ImageMemoryBarriers
 }
 
 
@@ -457,14 +470,24 @@ cmd void vkCmdWaitEvents(
     const VkBufferMemoryBarrier* pBufferMemoryBarriers,
     u32                          imageMemoryBarrierCount,
     const VkImageMemoryBarrier*  pImageMemoryBarriers) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
-    cb := CommandBuffers[commandBuffer]
-    args := new!vkCmdWaitEventsArgs(
-      SrcStageMask:  srcStageMask,
-      DstStageMask:  dstStageMask,
-    )
+    mapPos := cmdBuf.BufferCommands.vkCmdWaitEventsCount
+
+    oldArgs := cmdBuf.BufferCommands.vkCmdWaitEvents[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdWaitEventsArgs()
+      case false: oldArgs
+    }
+    clear(args.Events)
+    clear(args.MemoryBarriers)
+    clear(args.BufferMemoryBarriers)
+    clear(args.ImageMemoryBarriers)
+    args.SrcStageMask =   srcStageMask
+    args.DstStageMask =   dstStageMask
+    
     events := pEvents[0:eventCount]
     handleMemoryBarriersPNext(pMemoryBarriers, memoryBarrierCount)
     memoryBarriers := pMemoryBarriers[0:memoryBarrierCount]
@@ -485,18 +508,16 @@ cmd void vkCmdWaitEvents(
     for i in (0 .. imageMemoryBarrierCount) {
       args.ImageMemoryBarriers[i] = imageMemoryBarriers[i]
       img := Images[args.ImageMemoryBarriers[i].image]
-      RecordLayoutTransition(cb, 
+      RecordLayoutTransition(cmdBuf, 
         img,
         args.ImageMemoryBarriers[i].subresourceRange, 
         args.ImageMemoryBarriers[i].newLayout
       )
     }
+    cmdBuf.BufferCommands.vkCmdWaitEvents[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdWaitEventsCount = mapPos + 1
 
-    mapPos := as!u32(len(cb.BufferCommands.vkCmdWaitEvents))
-    cb.BufferCommands.vkCmdWaitEvents[mapPos] =
-    args
-
-    AddCommand(commandBuffer, cmd_vkCmdWaitEvents, mapPos)
+    AddCommand(cmdBuf, cmd_vkCmdWaitEvents, mapPos)
   }
 }
 
@@ -508,9 +529,9 @@ cmd void vkCmdWaitEvents(
   VkPipelineStageFlags             SrcStageMask        ,
   VkPipelineStageFlags             DstStageMask        ,
   VkDependencyFlags                DependencyFlags     ,
-  map!(u32, VkMemoryBarrier)       MemoryBarriers      ,
-  map!(u32, VkBufferMemoryBarrier) BufferMemoryBarriers,
-  map!(u32, VkImageMemoryBarrier)  ImageMemoryBarriers
+  dense_map!(u32, VkMemoryBarrier)       MemoryBarriers      ,
+  dense_map!(u32, VkBufferMemoryBarrier) BufferMemoryBarriers,
+  dense_map!(u32, VkImageMemoryBarrier)  ImageMemoryBarriers
 }
 
 sub void dovkCmdPipelineBarrier(ref!vkCmdPipelineBarrierArgs args) {
@@ -586,15 +607,22 @@ cmd void vkCmdPipelineBarrier(
     const VkBufferMemoryBarrier* pBufferMemoryBarriers,
     u32                          imageMemoryBarrierCount,
     const VkImageMemoryBarrier*  pImageMemoryBarriers) {
-  if !(commandBuffer in CommandBuffers) {
+  cmdBuf := CommandBuffers[commandBuffer]
+  if cmdBuf == null {
     vkErrorInvalidCommandBuffer(commandBuffer)
   } else {
-    cb := CommandBuffers[commandBuffer]
-    args := new!vkCmdPipelineBarrierArgs(
-      SrcStageMask:     srcStageMask,
-      DstStageMask:     dstStageMask,
-      DependencyFlags:  dependencyFlags
-    )
+    mapPos := cmdBuf.BufferCommands.vkCmdPipelineBarrierCount
+    
+    oldArgs := cmdBuf.BufferCommands.vkCmdPipelineBarrier[mapPos]
+    args := switch oldArgs == null {
+      case true: new!vkCmdPipelineBarrierArgs()
+      case false: oldArgs
+    }
+
+    args.SrcStageMask = srcStageMask
+    args.DstStageMask = dstStageMask
+    args.DependencyFlags = dependencyFlags
+
     handleMemoryBarriersPNext(pMemoryBarriers, memoryBarrierCount)
     memoryBarriers := pMemoryBarriers[0:memoryBarrierCount]
     for i in (0 .. memoryBarrierCount) {
@@ -612,17 +640,16 @@ cmd void vkCmdPipelineBarrier(
     for i in (0 .. imageMemoryBarrierCount) {
       args.ImageMemoryBarriers[i] = imageMemoryBarriers[i]
       img := Images[args.ImageMemoryBarriers[i].image]
-      RecordLayoutTransition(cb, 
+      RecordLayoutTransition(cmdBuf, 
         img,
         args.ImageMemoryBarriers[i].subresourceRange, 
         args.ImageMemoryBarriers[i].newLayout
       )
     }
+    cmdBuf.BufferCommands.vkCmdPipelineBarrier[mapPos] = args
+    cmdBuf.BufferCommands.vkCmdPipelineBarrierCount = mapPos + 1
 
-    mapPos := as!u32(len(cb.BufferCommands.vkCmdPipelineBarrier))
-    cb.BufferCommands.vkCmdPipelineBarrier[mapPos] = args
-
-    AddCommand(commandBuffer, cmd_vkCmdPipelineBarrier, mapPos)
+    AddCommand(cmdBuf, cmd_vkCmdPipelineBarrier, mapPos)
   }
 }
 
@@ -634,9 +661,9 @@ extern void recordFenceReset(VkFence fence)
 
 sub void processBarriers(VkPipelineStageFlags             srcStageMask,
                          VkPipelineStageFlags             dstStageMask,
-                         map!(u32, VkMemoryBarrier)       memoryBarriers,
-                         map!(u32, VkBufferMemoryBarrier) bufferBarriers,
-                         map!(u32, VkImageMemoryBarrier)  imageBarriers) {
+                         dense_map!(u32, VkMemoryBarrier)       memoryBarriers,
+                         dense_map!(u32, VkBufferMemoryBarrier) bufferBarriers,
+                         dense_map!(u32, VkImageMemoryBarrier)  imageBarriers) {
   // Note: srcStageMask, dstStageMask, srcAccessMask, dstAccessMask
   // These parameters do not currently seem to to affect any state change, but
   // are included as arguments here as they may may be helpful for future
@@ -663,7 +690,7 @@ sub void processBarriers(VkPipelineStageFlags             srcStageMask,
 @spy_disabled
 sub void processMemoryBarriers(VkPipelineStageFlags       srcStageMask,
                                VkPipelineStageFlags       dstStageMask,
-                               map!(u32, VkMemoryBarrier) memoryBarriers) {
+                               dense_map!(u32, VkMemoryBarrier) memoryBarriers) {
   if len(memoryBarriers) > 0 {
     for _ , _ , img in Images {
       for _ , _ , aspect in img.Aspects {
@@ -685,7 +712,7 @@ sub void processMemoryBarriers(VkPipelineStageFlags       srcStageMask,
 @spy_disabled
 sub void processBufferBarriers(VkPipelineStageFlags             srcStageMask,
                                VkPipelineStageFlags             dstStageMask,
-                               map!(u32, VkBufferMemoryBarrier) bufferBarriers) {
+                               dense_map!(u32, VkBufferMemoryBarrier) bufferBarriers) {
   for _ , _ , v in bufferBarriers {
     if !(v.buffer in Buffers) { vkErrorInvalidBuffer(v.buffer) } else {
       buf := Buffers[v.buffer]
