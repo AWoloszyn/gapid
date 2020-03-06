@@ -40,16 +40,29 @@
   dense_map!(u32, VkQueue) m
 }
 
-sub void executeSubmit(VkQueue queue, Submission sub) {
-  q := Queues[queue]
-  for i in (0 .. len(sub.WaitSemaphores)) {
-    sem := sub.WaitSemaphores[as!u32(i)]
-    s := Semaphores[sem]
-    s.Signaled = false
-  }
-  enterSubcontext()
+@server_disabled
+sub void executeCommandBuffersTrace(ref!QueueObject q, Submission sub) {
+   enterSubcontext()
   for i in (0 .. len(sub.CommandBuffers)) {
-    LastDrawInfos[queue] = new!DrawInfo()
+    cb := CommandBuffers[sub.CommandBuffers[as!u32(i)]]
+    for _, k, v in cb.ImageTransitions {
+      img := Images[k]
+      for _, aspect, transitions in v.AspectTransitions {
+        for _, subres, layout in transitions.Layouts {
+          level := as!u32((subres) & 0xFF)
+          layer := as!u32((subres >> 8))
+          img.Aspects[aspect].Layers[layer].Levels[level].Layout = layout
+        }
+      }
+    }
+  }
+}
+
+@spy_disabled
+sub void trackExecuteCommandBuffers(ref!QueueObject q, Submission sub) {
+   enterSubcontext()
+  for i in (0 .. len(sub.CommandBuffers)) {
+    LastDrawInfos[q.VulkanHandle] = new!DrawInfo()
     cb := CommandBuffers[sub.CommandBuffers[as!u32(i)]]
     if ((cb.BeginInfo != null) && 
         (cb.BeginInfo.DeviceGroupBegin != null)) {
@@ -67,6 +80,18 @@ sub void executeSubmit(VkQueue queue, Submission sub) {
     nextSubcontext()
   }
   leaveSubcontext()
+}
+
+sub void executeSubmit(VkQueue queue, Submission sub) {
+  q := Queues[queue]
+  for i in (0 .. len(sub.WaitSemaphores)) {
+    sem := sub.WaitSemaphores[as!u32(i)]
+    s := Semaphores[sem]
+    s.Signaled = false
+  }
+  executeCommandBuffersTrace(q, sub)
+  trackExecuteCommandBuffers(q, sub)
+
 
   if (sub.SparseBinds != null) {
     for _ , buf , binds in sub.SparseBinds.BufferBinds {
