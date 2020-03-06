@@ -96,7 +96,6 @@ class Spy : public GlesSpy, public GvrSpy, public VulkanSpy {
 
  private:
   Spy();
-
   // observeFramebuffer captures the currently bound framebuffer's color
   // buffer, and writes it to a FramebufferObservation message.
   void observeFramebuffer(CallObserver* observer, uint8_t api);

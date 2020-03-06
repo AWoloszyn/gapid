@@ -49,19 +49,13 @@ class CallObserver : public context_t {
 
   typedef std::function<void(slice_t*)> OnSliceEncodedCallback;
 
-  CallObserver(SpyBase* spy_p, CallObserver* parent, uint8_t api);
+  CallObserver(SpyBase* spy_p, uint8_t api);
 
   ~CallObserver();
 
-  inline CallObserver* getParent() { return mParent; }
-
-  // setCurrentCommandName sets the name of the current command that is being
-  // observed by this observer. The storage of cmd_name must remain valid for
-  // the lifetime of this observer object, ideally it should be static
-  // string.
-  void setCurrentCommandName(const char* cmd_name) {
-    mCurrentCommandName = cmd_name;
-  }
+  
+  void beginCommand(const char* name);
+  void endCommand();
 
   const char* getCurrentCommandName() { return mCurrentCommandName; }
 
@@ -204,8 +198,6 @@ class CallObserver : public context_t {
   // A pointer to the spy instance.
   SpyBase* mSpy;
 
-  // A pointer to the parent CallObserver.
-  CallObserver* mParent;
 
   // The encoder stack.
   std::stack<PackEncoder::SPtr> mEncoderStack;

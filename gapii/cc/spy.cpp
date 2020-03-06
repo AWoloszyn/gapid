@@ -280,18 +280,21 @@ Spy::~Spy() {
 
 void Spy::resolveImports() { GlesSpy::mImports.resolve(); }
 
+// 3 because there are 3 api indices
+thread_local CallObserver* tl_observer[4] = {nullptr, nullptr, nullptr};
+
 CallObserver* Spy::enter(const char* name, uint32_t api) {
   lock();
-  auto ctx = new CallObserver(this, gContext, api);
-  ctx->setCurrentCommandName(name);
-  gContext = ctx;
-  return ctx;
+  if (tl_observer[api] == nullptr) {
+    tl_observer[api] = new CallObserver(this, api);
+  }
+  tl_observer[api]->beginCommand(name);
+  gContext = tl_observer[api];
+  return gContext;
 }
 
 void Spy::exit() {
-  auto context = gContext;
-  gContext = context->getParent();
-  delete context;
+  gContext = nullptr;
   unlock();
 }
 
