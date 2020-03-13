@@ -107,6 +107,14 @@ func Type(ctx context.Context, p *path.Type, r *path.ResolveConfig) (interface{}
 	return t, err
 }
 
+func TypeByName(ctx context.Context, p *path.TypeByName, r *path.ResolveConfig) (interface{}, error) {
+	a := api.Find(api.ID(p.API.ID.ID()))
+	if a == nil {
+		return nil, fmt.Errorf("Invalid API in path %s", p.API.ID)
+	}
+	return types.GetTypeByName(p.TypeName, uint64(a.Index()))
+}
+
 func TypeSize(ctx context.Context, p *path.TypeSize, r *path.ResolveConfig) (interface{}, error) {
 	c, err := capture.ResolveGraphicsFromPath(ctx, p.Capture)
 	if err != nil {

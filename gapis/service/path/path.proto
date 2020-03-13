@@ -68,6 +68,7 @@ message Any {
     Thumbnail thumbnail = 40;
     Type type = 41;
     TypeSize type_size = 42;
+    TypeByName type_by_name = 43;
   }
 }
 
@@ -189,6 +190,12 @@ message Type {
 message TypeSize {
   Type type = 1;
   Capture capture = 2;
+}
+
+// Returns the given type from the given API by name
+message TypeByName {
+  string type_name = 1;
+  API API = 2;
 }
 
 // Result is the path to the result value of a command.

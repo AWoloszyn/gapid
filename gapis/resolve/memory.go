@@ -21,7 +21,6 @@ import (
 
 	"github.com/google/gapid/core/app/analytics"
 	coreid "github.com/google/gapid/core/data/id"
-	"github.com/google/gapid/core/log"
 	"github.com/google/gapid/core/math/interval"
 	"github.com/google/gapid/gapis/api"
 	"github.com/google/gapid/gapis/api/sync"

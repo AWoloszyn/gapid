@@ -30,8 +30,8 @@ import (
 	"github.com/google/gapid/gapis/messages"
 	"github.com/google/gapid/gapis/resolve/initialcmds"
 	"github.com/google/gapid/gapis/service"
-	"github.com/google/gapid/gapis/service/path"
 	"github.com/google/gapid/gapis/service/memory_box"
+	"github.com/google/gapid/gapis/service/path"
 	"github.com/google/gapid/gapis/service/types"
 )
 
@@ -72,7 +72,7 @@ func resolveObject(ctx context.Context, command api.Cmd, st *api.GlobalState, ba
 	if err != nil {
 		return nil, err
 	}
-	
+
 	dec := st.MemoryDecoder(ctx, pool.Slice(memory.Range{
 		Base: base + (uint64(sz) * offs),
 		Size: uint64(sz),
@@ -83,7 +83,7 @@ func resolveObject(ctx context.Context, command api.Cmd, st *api.GlobalState, ba
 		Size: uint64(sz),
 	}))
 	dec2.Data(b)
-	
+
 	cm, err := memory_box.DecodeMemory(ctx, st.MemoryLayout, dec, uint64(sz), e)
 	return cm, err
 }
@@ -139,10 +139,11 @@ func Stream(
 	backup_state := state.Clone(ctx)
 	lastCmd := -1
 	curCmd := 0
-	doCmd := func(ctx context.Context, id api.CmdID, cmd api.Cmd) error {
+	doCmd := func(ctx context.Context, cmdID api.CmdID, cmd api.Cmd) error {
 		process := req.PassDefault
 		typedRanges := service.TypedMemoryRanges{}
 		readMemory := false
+		drop := false
 
 		if !process {
 			_, process = m[cmd.CmdName()]
@@ -151,7 +152,7 @@ func Stream(
 		if process {
 			cmd.Extras().Observations().ApplyReads(backup_state.Memory.ApplicationPool())
 			cmd.Extras().Observations().ApplyWrites(backup_state.Memory.ApplicationPool())
-			
+
 			csvc, err := api.CmdToService(cmd)
 			if err != nil {
 				return err
@@ -169,13 +170,18 @@ func Stream(
 				switch t := resp.Req.(type) {
 				case *service.StreamCommandsRequest_PassCommand:
 					_ = t
+					drop = false
+					break loop
+				case *service.StreamCommandsRequest_DropCommand:
+					_ = t
+					drop = true
 					break loop
 				case *service.StreamCommandsRequest_ResolveObject:
 					v, err := resolveObject(ctx, cmd, backup_state, t.ResolveObject.Pointer, t.ResolveObject.Type.TypeIndex, t.ResolveObject.Offset)
 					if err != nil {
 						return err
 					}
-					
+
 					comm.OnRequestReturn(ctx,
 						&service.StreamCommandsResponse{
 							Res: &service.StreamCommandsResponse_ReadObject{
@@ -188,7 +194,7 @@ func Stream(
 						comm.OnRequestReturn(ctx,
 							&service.StreamCommandsResponse{
 								Res: &service.StreamCommandsResponse_TypedRanges{
-									&service.TypedRangeResponse {
+									&service.TypedRangeResponse{
 										Ranges: typedRanges,
 									},
 								},
@@ -203,18 +209,18 @@ func Stream(
 					if lastCmd < curCmd {
 						for i := lastCmd + 1; i < curCmd; i++ {
 							if i < len(ic) {
-								ic[i].Mutate(ctx, id, backup_state, nil, nil)
+								ic[i].Mutate(ctx, cmdID, backup_state, nil, nil)
 							} else {
-								c.Commands[i-len(ic)].Mutate(ctx, id, backup_state, nil, nil)
+								c.Commands[i-len(ic)].Mutate(ctx, cmdID, backup_state, nil, nil)
 							}
 						}
 					}
 					lastCmd = curCmd
-					backup_state.Memory.SetOnCreate(func(id memory.PoolID, pool *memory.Pool) {
-						pool.OnRead = func(rng memory.Range, root uint64, id uint64) {
+					backup_state.Memory.SetOnCreate(func(pId memory.PoolID, pool *memory.Pool) {
+						pool.OnRead = func(rng memory.Range, root uint64, tId uint64, apiId id.ID) {
 							typedRanges = append(typedRanges,
 								&service.TypedMemoryRange{
-									Type: &path.Type{TypeIndex: id},
+									Type: &path.Type{TypeIndex: tId, API: &path.API{ID: path.NewID(apiId)}},
 									Range: &service.MemoryRange{
 										Base: rng.Base,
 										Size: rng.Size,
@@ -223,10 +229,10 @@ func Stream(
 								},
 							)
 						}
-						pool.OnWrite = func(rng memory.Range, root uint64, id uint64) {
+						pool.OnWrite = func(rng memory.Range, root uint64, tId uint64, apiId id.ID) {
 							typedRanges = append(typedRanges,
 								&service.TypedMemoryRange{
-									Type: &path.Type{TypeIndex: id},
+									Type: &path.Type{TypeIndex: tId, API: &path.API{ID: path.NewID(apiId)}},
 									Range: &service.MemoryRange{
 										Base: rng.Base,
 										Size: rng.Size,
@@ -236,8 +242,8 @@ func Stream(
 							)
 						}
 					})
-					cmd.Mutate(ctx, id, backup_state, nil, nil)
-					backup_state.Memory.SetOnCreate(func(id memory.PoolID, pool *memory.Pool) {
+					cmd.Mutate(ctx, cmdID, backup_state, nil, nil)
+					backup_state.Memory.SetOnCreate(func(pId memory.PoolID, pool *memory.Pool) {
 						pool.OnRead = nil
 						pool.OnWrite = nil
 					})
@@ -245,7 +251,7 @@ func Stream(
 					comm.OnRequestReturn(ctx,
 						&service.StreamCommandsResponse{
 							Res: &service.StreamCommandsResponse_TypedRanges{
-								&service.TypedRangeResponse {
+								&service.TypedRangeResponse{
 									Ranges: typedRanges,
 								},
 							},
@@ -260,11 +266,15 @@ func Stream(
 		}
 
 		curCmd++
-		return cmd.Mutate(ctx, id, state, nil, nil)
+		if !drop {
+			return cmd.Mutate(ctx, cmdID, state, nil, nil)
+		} else {
+			return nil
+		}
 	}
-	
+
 	if len(ic) > 0 {
-		err = api.ForeachCmd(ctx, ic, doCmd)
+		err = api.ForeachCmd(ctx, ic, true, doCmd)
 		if err != nil {
 			return err
 		}
@@ -276,6 +286,6 @@ func Stream(
 			},
 		)
 	}
-	err = api.ForeachCmd(ctx, c.Commands, doCmd)
+	err = api.ForeachCmd(ctx, c.Commands, true, doCmd)
 	return err
 }

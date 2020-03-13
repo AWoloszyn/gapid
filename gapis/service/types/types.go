@@ -32,12 +32,18 @@ type typeData struct {
 }
 
 var type_map = make(map[uint64]*typeData)
+var type_name_map = make(map[string]map[uint64]uint64)
 
 func AddType(i uint64, t *Type, rt reflect.Type) {
 	if _, ok := type_map[i]; ok {
 		panic(fmt.Errorf("Error identical types exist %+v", i))
 	}
 	type_map[i] = &typeData{t, rt}
+	nm := t.Name
+	if _, ok := type_name_map[nm]; !ok {
+		type_name_map[nm] = make(map[uint64]uint64)
+	}
+	type_name_map[nm][i >> 59] = i
 }
 
 func GetType(i uint64) (*Type, error) {
@@ -46,6 +52,22 @@ func GetType(i uint64) (*Type, error) {
 		return nil, fmt.Errorf("Could not find type %v", i)
 	}
 	return t.tp, nil
+}
+
+func GetTypeByName(s string, api_id uint64) (*Type, error) {
+	nmap, ok := type_name_map[s]
+	if !ok {
+		return nil, fmt.Errorf("Could not find type %v", s)
+	}
+	i, ok := nmap[api_id]
+	if !ok {
+		i, ok = nmap[0] // If we couldn't find it in the api, try in the global space
+		if !ok {
+			return nil, fmt.Errorf("Could not find type %v in API %d", s, api_id)
+		}
+	}
+
+	return type_map[i].tp, nil
 }
 
 func TryGetType(i uint64) (*Type, bool) {

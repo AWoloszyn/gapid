@@ -33,7 +33,6 @@ go_library(
         "manager.go",
         "mapping_exporter.go",
         "replay.go",
-        "replay_connection.go",
         "stream.go",
         "timestamps.go",
         "wait_for_fence.go",

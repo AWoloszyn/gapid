@@ -21,3 +21,10 @@ gapis.log
 # Vim
 [._]*.s[a-w][a-z]
 [._]s[a-w][a-z]
+
+# python generated
+__pycache__
+/py/core/*
+/py/gapis/*
+/py/perfetto/*
+/py/protos/*

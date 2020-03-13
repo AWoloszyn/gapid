@@ -1403,12 +1403,17 @@ message GetTimestampsResponse {
 message Pass {
 }
 
+// Drop the current command, unmodified
+message Drop {
+}
+
 message StreamCommandsRequest {
   oneof req {
     StreamStartRequest start = 1;
     Pass pass_command = 2;
-    ResolveObject resolve_object = 3;
-    GetMemory get_memory = 4;
+    Drop drop_command = 3;
+    ResolveObject resolve_object = 4;
+    GetMemory get_memory = 5;
   }
 }
 
