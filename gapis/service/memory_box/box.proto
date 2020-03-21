@@ -35,6 +35,7 @@ message Value {
 message Pointer {
   // base address of the pointer.
   uint64 address = 1;
+  bool fictional = 2;
 }
 
 message Slice {

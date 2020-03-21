@@ -1414,6 +1414,7 @@ message StreamCommandsRequest {
     Drop drop_command = 3;
     ResolveObject resolve_object = 4;
     GetMemory get_memory = 5;
+    PutMemory put_memory = 6;
   }
 }
 
@@ -1425,6 +1426,16 @@ message ResolveObject {
 
 
 message GetMemory {
+}
+
+message MemoryObject {
+  memory_box.Pointer pointer = 1;
+  path.Type type = 2;
+  memory_box.Value write_object = 3;
+}
+
+message PutMemory {
+  repeated MemoryObject objects = 1;
 }
 
 message TypedRangeResponse {

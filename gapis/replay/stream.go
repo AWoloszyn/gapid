@@ -15,17 +15,20 @@
 package replay
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"reflect"
 	"sync/atomic"
 
 	"github.com/google/gapid/core/app/status"
+	"github.com/google/gapid/core/data/endian"
 	"github.com/google/gapid/core/data/id"
 	"github.com/google/gapid/core/log"
 	"github.com/google/gapid/core/os/device/bind"
 	"github.com/google/gapid/gapis/api"
 	"github.com/google/gapid/gapis/capture"
+	"github.com/google/gapid/gapis/database"
 	"github.com/google/gapid/gapis/memory"
 	"github.com/google/gapid/gapis/messages"
 	"github.com/google/gapid/gapis/resolve/initialcmds"
@@ -96,6 +99,11 @@ func (*mockDevice) CanTrace() bool {
 	return false
 }
 
+type write struct {
+	rng memory.Range
+	id id.ID
+}
+
 func Stream(
 	ctx context.Context,
 	req *service.StreamStartRequest,
@@ -139,6 +147,7 @@ func Stream(
 	backup_state := state.Clone(ctx)
 	lastCmd := -1
 	curCmd := 0
+	additionalReads := []*service.MemoryObject{}
 	doCmd := func(ctx context.Context, cmdID api.CmdID, cmd api.Cmd) error {
 		process := req.PassDefault
 		typedRanges := service.TypedMemoryRanges{}
@@ -176,6 +185,8 @@ func Stream(
 					_ = t
 					drop = true
 					break loop
+				case *service.StreamCommandsRequest_PutMemory:
+					additionalReads = append(additionalReads, t.PutMemory.Objects...)
 				case *service.StreamCommandsRequest_ResolveObject:
 					v, err := resolveObject(ctx, cmd, backup_state, t.ResolveObject.Pointer, t.ResolveObject.Type.TypeIndex, t.ResolveObject.Offset)
 					if err != nil {
@@ -267,7 +278,94 @@ func Stream(
 
 		curCmd++
 		if !drop {
-			return cmd.Mutate(ctx, cmdID, state, nil, nil)
+			if len(additionalReads) != 0 {
+				// Start to get additional reads ready:
+				// #1 Encode our data into the pool
+				//    If this is a "fictional" pointer, then allocate memory
+				// #2 Clone the command and add this to the list of read observations.
+				// #3   Mutate
+				// #4 If this WAS a fictional pointer, then free the memory as well
+				resolves := make(map[uint64]api.AllocResult)
+				temporaryAllocations := []api.AllocResult{}
+				writes := []write{}
+				// First gather all of the fictional pointers, and create
+				// allocations for them
+				for _, r := range additionalReads {
+					if (r.Pointer.Fictional) {
+						tp, err := types.GetType(r.Type.TypeIndex)
+						if err != nil {
+							return err
+						}
+						st, ok := tp.Ty.(*types.Type_Slice)
+						if !ok {
+							return log.Err(ctx, nil, "Invalid type")
+						}
+						childType, err := types.GetType(st.Slice.Underlying)
+						if err != nil {
+							return err
+						}
+						element_size, err := childType.SizeAlignment(ctx, state.MemoryLayout)
+						if err != nil {
+							return err
+						}
+						nElements := len(r.WriteObject.Val.(*memory_box.Value_Slice).Slice.Values)
+						res, err := state.Alloc(ctx, element_size.ByteSize * uint64(nElements))
+						if err != nil {
+							return err
+						}
+						resolves[r.Pointer.Address] = res
+					}
+				}
+
+				for _, r := range additionalReads {
+					tp, err := types.GetType(r.Type.TypeIndex)
+					if err != nil {
+						return err
+					}
+
+					buf := &bytes.Buffer{}
+					e := memory.NewEncoder(endian.Writer(buf, state.MemoryLayout.GetEndian()), state.MemoryLayout)
+					err = memory_box.EncodeMemory(ctx, func(p uint64)uint64 {
+						if r, ok := resolves[p]; ok {
+							return r.Range().Base
+						}
+						return 0
+					}, state.MemoryLayout, e, tp, r.WriteObject)
+					if err != nil {
+						return err
+					}
+					ptr := r.Pointer.Address
+					if (r.Pointer.Fictional) {
+						res := resolves[r.Pointer.Address]
+						ptr = res.Range().Base
+						if len(buf.Bytes()) != int(res.Range().Size) {
+							panic("Invalid memory box size")
+						}
+					}
+					id, err := database.Store(ctx, buf.Bytes())
+					if err != nil {
+						return err
+					}
+					writes=append(writes, write{
+						memory.Range{ptr, uint64(len(buf.Bytes()))},
+						id,
+					})
+				}
+				// Now that we have unboxed and created the new memory properly,
+				// we can clone the command, and add our reads
+				newCmd := cmd.Clone(state.Arena)
+				for _, w := range writes {
+					newCmd.Extras().GetOrAppendObservations().AddRead(w.rng, w.id)
+				}
+				err := newCmd.Mutate(ctx, cmdID, state, nil, nil)
+				for _, v := range temporaryAllocations {
+					v.Free()
+				}
+				additionalReads = additionalReads[:0:0]
+				return err
+			} else {
+				return cmd.Mutate(ctx, cmdID, state, nil, nil)
+			}
 		} else {
 			return nil
 		}
