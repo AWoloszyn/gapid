@@ -49,6 +49,7 @@ class iter(object):
     self.class_handler.ch = self.get_memory
     self.use_default = hasattr(self.class_handler, "default")
     self.use_initial_commands = hasattr(self.class_handler, "initial_commands_done")
+    self.dirty_pointers = {}
 
     self.last_api = None
     self.alloc_index = 0

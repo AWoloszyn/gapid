@@ -16,6 +16,11 @@ class pointer(object):
     return "<{}>({})".format(self.type.name, self.val)
   def get_type(self):
     return self.type
+
+  def set_dirty(self, offset):
+    self.dirty[offset] = True
+    self.handler.dirty_pointers[self] = True
+
   def __getitem__(self, index):
     if index not in self.items:
       if self.external_init:
@@ -29,7 +34,7 @@ class pointer(object):
               )
         ))
       aa = self.handler.get()
-      self.items[index] = decode_type(self.handler, self.type.underlying(), aa.read_object)
+      self.items[index] = decode_type(self.handler, self, index, self.type.underlying(), aa.read_object)
     return self.items[index]
   def __setitem__(self, name, value):
     if not self.external_init:
@@ -40,11 +45,13 @@ class pointer(object):
     self.dirty[name] = True
 
 class struct(object):
-  def __init__(self, handler, typename):
+  def __init__(self, handler, typename, ptr, offset):
     self.name = typename
     self.fields = {}
     self.__dirty = False
     self.__initialized = True
+    self.__pointer = ptr
+    self.__offset = offset
   def __str__(self):
     string = self.name + "{"
     for k, v in self.fields.items():
@@ -63,16 +70,35 @@ class struct(object):
         raise TypeError()
       self.fields[name] = value
       dict.__setattr__(self, "_struct__dirty", True)
+      ptr = dict._getattr__(self, "_struct__pointer")
+      if ptr != None:
+        ptr.set_dirty(dict.__getattr__(self, "_struct__offset"))
     else:
       super(struct, self).__setattr__(name, value)
 
-def decode_type(handler, tp, val):
+class array(object):
+  def __init__(self, val, ptr, offset):
+    self.v = val
+    self.handler = handler
+    self.pointer = ptr
+    self.offset = offset
+
+  def __getitem__(self, idx):
+    return self.v[idx]
+
+  def __setitem__(self, idx, val):
+    if self.ptr != None:
+      self.ptr.set_dirty(offset)
+    self.v[idx] = val
+
+
+def decode_type(handler, ptr, offset, tp, val):
   if type(tp) == gapis_types.struct_type:
-    x = struct(handler, tp.name)
+    x = struct(handler, tp.name, ptr, offset)
     for i in range(0, len(tp.fields_by_num)):
       ft = tp.underlying(i)
       fn = tp.field_names[i]
-      fv = decode_type(handler, ft, val.struct.fields[i])
+      fv = decode_type(handler, ptr, offset, ft, val.struct.fields[i])
       x.fields[fn] = fv
     return x
   if type(tp) == gapis_types.pointer_type:
@@ -80,20 +106,24 @@ def decode_type(handler, tp, val):
   if type(tp) == gapis_types.enum_type:
     return tp.get_value()(val)
   if type(tp) == gapis_types.pseudonym_type:
-    return decode_type(handler, tp.underlying(), val)
+    return decode_type(handler, ptr, offset, tp.underlying(), val)
+  if type(tp) == gapis_types.array_type:
+    return array(tp.get_value()(val), ptr, offset)
 
   return tp.get_value()(val)
 
-def default_value(handler, tp):
+def default_value(handler, tp, ptr, offset):
   if type(tp) == gapis_types.struct_type:
     x = struct(handler, tp.name)
     for i in range(0, len(tp.fields_by_num)):
       ft = tp.underlying(i)
       fn = tp.field_names[i]
-      x.fields[fn] = default_value(handler, ft)
+      x.fields[fn] = default_value(handler, ft, ptr, offset)
     return x
   if type(tp) == gapis_types.pointer_type:
     return pointer(handler, tp, 0)
+  if type(tp) == gapis_types.array_type:
+    return array(tp.get_default_value(), ptr, offset)
   return tp.get_default_value()
 
 class command(object):
@@ -103,7 +133,7 @@ class command(object):
     self.ordered_params = []
     for t in proto.command.parameters:
       tp = tm.get_type(t.type.type_index, proto.command.API)
-      val = decode_type(handler, tp, t.value)
+      val = decode_type(handler, None, 0, tp, t.value)
       self.ordered_params.append((t.name, val))
       self.params[t.name] = val
 
