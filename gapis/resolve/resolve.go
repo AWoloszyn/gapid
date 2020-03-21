@@ -390,6 +390,8 @@ func ResolveInternal(ctx context.Context, p path.Node, r *path.ResolveConfig) (i
 		return Stats(ctx, p, r)
 	case *path.Type:
 		return Type(ctx, p, r)
+	case *path.TypeByName:
+		return TypeByName(ctx, p, r)
 	default:
 		return nil, fmt.Errorf("Unknown path type %T", p)
 	}

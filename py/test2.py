@@ -15,6 +15,7 @@ class Handler(HandlerBase):
     self.default("vkQueueSubmit", queue, submitCount, pSubmits, fence)
     v  = pSubmits[0]
     x = [pSubmits[0].pCommandBuffers[x] for x in range(pSubmits[0].commandBufferCount)]
+    pSubmits[0].commandBufferCount = 4
     for cb in x:
       if not cb in self.CommandBuffers:
         self.CommandBuffers[cb] = 0

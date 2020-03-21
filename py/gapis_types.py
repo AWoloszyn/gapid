@@ -1,6 +1,7 @@
 import gapis.service.path.path_pb2 as Path
 import core.data.pod.pod_pb2 as Pod
 import gapis.service.types.types_pb2 as Types
+import gapis.service.memory_box.box_pb2 as Box
 import gapis.service.service_pb2 as Proto
 import sys
 
@@ -9,7 +10,10 @@ class type(object):
     self.name = type.name
     self.api_path = api_path
     pass
-  def get_value(self):
+  def get_value(self, val):
+    raise Exception("Unknown Type: {}".format(self.name))
+
+  def set_value(self, val):
     raise Exception("Unknown Type: {}".format(self.name))
 
 class pointer_type(object):
@@ -27,12 +31,17 @@ class pointer_type(object):
   def base(self):
     return self.manager.get_type(self.child, self.api_path).base()
 
-  def get_value(self):
-    def gv(val):
-      if val.HasField("pod"):
-        return val.pod.uint64
-      return val.pointer.address
-    return gv
+  def get_value(self, val):
+    if val.HasField("pod"):
+      return val.pod.uint64
+    return val.pointer.address
+
+  def set_value(self, val):
+    return Box.Value(
+      pointer=Box.Pointer(
+        address=val
+      )
+    )
 
 class array_type(object):
   def __init__(self, type, api_path, type_manager):
@@ -49,55 +58,63 @@ class array_type(object):
   def base(self):
     return self.manager.get_type(self.child, self.api_path).base()
 
-  def get_value(self):
+  def get_value(self, val):
     ct = self.underlying()
     sz = self.size
-    def gv(val):
-      x = []
-      # There is an edge-case here, the value may come in as
-      # a pod.array
-      if len(val.array.entries) == sz:
-        for i in range(0, sz):
-          x.append(ct.get_value()(val.array.entries[i]))
-      if val.pod.float32_array:
-        x = val.pod.float32_array.val
-      elif val.pod.float64_array:
-        x = val.pod.float64_array.val
-      elif val.pod.uint_array:
-        x = val.pod.uint_array.val
-      elif val.pod.sint_array:
-        x = val.pod.sint_array.val
-      elif val.pod.uint8_array:
-        x = val.pod.uint8_array
-      elif val.pod.sint8_array:
-        x = val.pod.sint8_array.val
-      elif val.pod.uint16_array:
-        x = val.pod.uint16_array.val
-      elif val.pod.sint16_array:
-        x = val.pod.sint16_array.val
-      elif val.pod.uint32_array:
-        x = val.pod.uint32_array.val
-      elif val.pod.sint32_array:
-        x = val.pod.sint32_array.val
-      elif val.pod.uint64_array:
-        x = val.pod.uint64_array.val
-      elif val.pod.sint64_array:
-        x = val.pod.sint64_array.val
-      elif val.pod.bool_array:
-        x = val.pod.bool_array.val
-      elif val.pod.string_array:
-        x = val.pod.string_array.val
-      return x
-
-    return gv
+    x = []
+    # There is an edge-case here, the value may come in as
+    # a pod.array
+    if len(val.array.entries) == sz:
+      for i in range(0, sz):
+        x.append(ct.get_value(val.array.entries[i]))
+    if val.pod.float32_array:
+      x = val.pod.float32_array.val
+    elif val.pod.float64_array:
+      x = val.pod.float64_array.val
+    elif val.pod.uint_array:
+      x = val.pod.uint_array.val
+    elif val.pod.sint_array:
+      x = val.pod.sint_array.val
+    elif val.pod.uint8_array:
+      x = val.pod.uint8_array
+    elif val.pod.sint8_array:
+      x = val.pod.sint8_array.val
+    elif val.pod.uint16_array:
+      x = val.pod.uint16_array.val
+    elif val.pod.sint16_array:
+      x = val.pod.sint16_array.val
+    elif val.pod.uint32_array:
+      x = val.pod.uint32_array.val
+    elif val.pod.sint32_array:
+      x = val.pod.sint32_array.val
+    elif val.pod.uint64_array:
+      x = val.pod.uint64_array.val
+    elif val.pod.sint64_array:
+      x = val.pod.sint64_array.val
+    elif val.pod.bool_array:
+      x = val.pod.bool_array.val
+    elif val.pod.string_array:
+      x = val.pod.string_array.val
+    return x
 
   def get_default_value(self):
     ct = self.underlying()
     sz = self.size
     x = []
     for i in range(0, sz):
-      x = x.append(ct.get_default_value())
+      x.append(ct.get_default_value())
     return x
+
+  def set_value(self, val):
+    ct = self.underlying()
+    x = []
+    for i in range (0, self.size):
+      x.append(ct.set_value(val[i]))
+    return Box.Value(
+      array=Box.Array(
+        entries = x
+      )
+    )
 
 class struct_type(object):
   def __init__(self, type, api_path, type_manager):
@@ -122,14 +139,6 @@ class struct_type(object):
     i = self.field_index(i)
     return self.manager.get_type(self.fields_by_num[i], self.api_path)
 
-  def get_value(self, i):
-    if isinstance(i, str):
-      i = self.field_index(i)
-    ct = self.underlying(i)
-    def gv(val):
-      return ct.get_value()(val.struct.fields[i])
-    return gv
-
 
 class enum_type(object):
   def __init__(self, type, api_path, type_manager):
@@ -143,13 +152,16 @@ class enum_type(object):
     return self.manager.get_type(self.child, self.api_path)
 
   def base(self):
-    return self.manager.get_type(self.child, self.api_path).base()
+    return self.underlying().base()
 
-  def get_value(self):
-    return self.manager.get_type(self.child, self.api_path).get_value()
+  def get_value(self, val):
+    return self.underlying().get_value(val)
 
   def get_default_value(self):
-    return self.manager.get_type(self.child, self.api_path).get_default_value()
+    return self.underlying().get_default_value()
+
+  def set_value(self, val):
+    return self.underlying().set_value(val)
 
 class pseudonym_type(object):
   def __init__(self, type, api_path, type_manager):
@@ -163,13 +175,16 @@ class pseudonym_type(object):
     return self.manager.get_type(self.child, self.api_path)
 
   def base(self):
-    return self.manager.get_type(self.child, self.api_path).base()
+    return self.underlying().base()
 
-  def get_value(self):
-    return self.manager.get_type(self.child, self.api_path).get_value()
+  def get_value(self, val):
+    return self.underlying().get_value(val)
 
   def get_default_value(self):
-    return self.manager.get_type(self.child, self.api_path).get_default_value()
+    return self.underlying().get_default_value()
+
+  def set_value(self, val):
+    return self.underlying().set_value(val)
 
 class uint8_type(object):
   def __init__(self, type, api_path):
@@ -186,10 +201,15 @@ class uint8_type(object):
   def get_default_value(self):
     return 0
 
-  def get_value(self):
-    def gb(val):
-      return val.pod.uint8
-    return gb
+  def get_value(self, val):
+    return val.pod.uint8
+
+  def set_value(self, val):
+    return Box.Value(
+      pod=Pod.Value(
+        uint8 = val
+      )
+    )
 
 class int8_type(object):
   def __init__(self, type, api_path):
@@ -203,10 +223,8 @@ class int8_type(object):
   def base(self):
     return self
 
-  def get_value(self):
-    def gb(val):
-      return val.pod.sint8
-    return gb
+  def get_value(self, val):
+    return val.pod.sint8
 
   def get_default_value(self):
     return 0
@@ -223,14 +241,18 @@ class int32_type(object):
   def base(self):
     return self
 
-  def get_value(self):
-    def gb(val):
-      return val.pod.sint32
-    return gb
+  def get_value(self, val):
+    return val.pod.sint32
 
   def get_default_value(self):
     return 0
 
+  def set_value(self, val):
+    return Box.Value(
+      pod=Pod.Value(
+        sint32 = val
+      )
+    )
 
 class uint32_type(object):
   def __init__(self, type, api_path):
@@ -244,14 +266,18 @@ class uint32_type(object):
   def base(self):
     return self
 
-  def get_value(self):
-    def gb(val):
-      return val.pod.uint32
-    return gb
+  def get_value(self, val):
+    return val.pod.uint32
 
   def get_default_value(self):
     return 0
 
+  def set_value(self, val):
+    return Box.Value(
+      pod=Pod.Value(
+        uint32 = val
+      )
+    )
 
 class float32_type(object):
   def __init__(self, type, api_path):
@@ -265,14 +291,18 @@ class float32_type(object):
   def base(self):
     return self
 
-  def get_value(self):
-    def gb(val):
-      return val.pod.float32
-    return gb
+  def get_value(self, val):
+    return val.pod.float32
 
   def get_default_value(self):
     return 0
 
+  def set_value(self, val):
+    return Box.Value(
+      pod=Pod.Value(
+        float32 = val
+      )
+    )
 
 class float64_type(object):
   def __init__(self, type, api_path):
@@ -286,14 +316,18 @@ class float64_type(object):
   def base(self):
     return self
 
-  def get_value(self):
-    def gb(val):
-      return val.pod.float64
-    return gb
+  def get_value(self, val):
+    return val.pod.float64
 
   def get_default_value(self):
     return 0
 
+  def set_value(self, val):
+    return Box.Value(
+      pod=Pod.Value(
+        float64 = val
+      )
+    )
 
 class uint64_type(object):
   def __init__(self, type, api_path):
@@ -307,14 +341,18 @@ class uint64_type(object):
   def base(self):
     return self
 
-  def get_value(self):
-    def gb(val):
-      return val.pod.uint64
-    return gb
+  def get_value(self, val):
+    return val.pod.uint64
 
   def get_default_value(self):
     return 0
 
+  def set_value(self, val):
+    return Box.Value(
+      pod=Pod.Value(
+        uint64 = val
+      )
+    )
 
 class int64_type(object):
   def __init__(self, type, api_path):
@@ -328,14 +366,18 @@ class int64_type(object):
   def base(self):
     return self
 
-  def get_value(self):
-    def gb(val):
-      return val.pod.sint64
-    return gb
+  def get_value(self, val):
+    return val.pod.sint64
 
   def get_default_value(self):
     return 0
 
+  def set_value(self, val):
+    return Box.Value(
+      pod=Pod.Value(
+        sint64 = val
+      )
+    )
 
 class size_type(object):
   def __init__(self, type, api_path):
@@ -349,14 +391,18 @@ class size_type(object):
   def base(self):
     return self
 
-  def get_value(self):
-    def gb(val):
-      return val.pod.uint64
-    return gb
+  def get_value(self, val):
+    return val.pod.uint64
 
   def get_default_value(self):
     return 0
 
+  def set_value(self, val):
+    return Box.Value(
+      pod=Pod.Value(
+        uint64 = val
+      )
+    )
 
 class char_type(object):
   def __init__(self, type, api_path):
@@ -370,13 +416,18 @@ class char_type(object):
   def base(self):
     return self
 
-  def get_value(self):
-    def gb(val):
-      return val.pod.uint8
-    return gb
+  def get_value(self, val):
+    return val.pod.uint8
 
   def get_default_value(self):
     return 0
+
+  def set_value(self, val):
+    return Box.Value(
+      pod=Pod.Value(
+        uint8 = val
+      )
+    )
 
 
 class int_type(object):
@@ -391,14 +442,18 @@ class int_type(object):
   def base(self):
     return self
 
-  def get_value(self):
-    def gb(val):
-      return val.pod.sint64
-    return gb
+  def get_value(self, val):
+    return val.pod.sint64
 
   def get_default_value(self):
     return 0
 
+  def set_value(self, val):
+    return Box.Value(
+      pod=Pod.Value(
+        sint64 = val
+      )
+    )
 
 class uint_type(object):
   def __init__(self, type, api_path):
@@ -412,14 +467,18 @@ class uint_type(object):
   def base(self):
     return self
 
-  def get_value(self):
-    def gb(val):
-      return val.pod.uint64
-    return gb
+  def get_value(self, val):
+    return val.pod.uint64
 
   def get_default_value(self):
     return 0
 
+  def set_value(self, val):
+    return Box.Value(
+      pod=Pod.Value(
+        uint64 = val
+      )
+    )
 
 class type_manager(object):
   def __init__(self, gapis):
@@ -438,6 +497,7 @@ class type_manager(object):
       )
     )))
     if type_info.error != None:
+      print("Error!! {}".format(type_info.error))
       raise TypeError()
     type_info = type_info.value
     return self.get_type(type_info.type.type_id, api_path)

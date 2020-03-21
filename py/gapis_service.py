@@ -5,6 +5,9 @@ from timeit import default_timer as timer
 import gapis.service.service_pb2_grpc as Service
 import gapis.service.path.path_pb2 as Path
 import gapis.service.service_pb2 as Proto
+import gapis.service.memory_box.box_pb2 as Box
+
+
 from gapis_types import type_manager
 from gapis_commands import command, pointer, default_value
 from enum import Enum
@@ -103,6 +106,7 @@ class iter(object):
     while True:
       g = self.get()
       if g.HasField("error"):
+        print("Error returned from server {}".format(g.error))
         break
       if g.HasField("done"):
         break
@@ -118,6 +122,26 @@ class iter(object):
         ret = getattr(self.class_handler, c.name)(*[x[1] for x in c.ordered_params])
       elif self.use_default:
         ret = self.class_handler.default(c.name, *[x[1] for x in c.ordered_params])
+      if len(self.dirty_pointers) != 0:
+          objs = []
+
+          for k in self.dirty_pointers:
+            slice_type = self.tm.get_type_by_name(k.underlying().name + "&", self.last_api)
+            objs.append(Proto.MemoryObject(
+              pointer=Box.Pointer(
+                address= k.val,
+                fictional = k.external_init,
+              ),
+              type=Path.Type(type_index=k.underlying().id),
+              write_object = k.get_encoded()
+            ))
+          print(objs)
+          self.dirty_pointers = {}
+          self.put(Proto.StreamCommandsRequest(
+            put_memory = Proto.PutMemory(
+              objects=objs
+            )
+          ))
       if (ret == CommandReturn.PassCommand) or (ret == None):
         self.put(
           Proto.StreamCommandsRequest(

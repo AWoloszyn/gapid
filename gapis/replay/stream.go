@@ -294,24 +294,24 @@ func Stream(
 					if (r.Pointer.Fictional) {
 						tp, err := types.GetType(r.Type.TypeIndex)
 						if err != nil {
-							return err
+							return log.Err(ctx, err, fmt.Sprintf("Error getting type $+v", r.Type))
 						}
 						st, ok := tp.Ty.(*types.Type_Slice)
 						if !ok {
-							return log.Err(ctx, nil, "Invalid type")
+							return log.Err(ctx, err, fmt.Sprintf("Type %+v is not slice", r.Type))
 						}
 						childType, err := types.GetType(st.Slice.Underlying)
 						if err != nil {
-							return err
+							return log.Err(ctx, err, fmt.Sprintf("Could not find underlying type %+v", st.Slice.Underlying))
 						}
 						element_size, err := childType.SizeAlignment(ctx, state.MemoryLayout)
 						if err != nil {
-							return err
+							return log.Err(ctx, err, fmt.Sprintf("Could not find alignment/size type %+v", childType))
 						}
 						nElements := len(r.WriteObject.Val.(*memory_box.Value_Slice).Slice.Values)
 						res, err := state.Alloc(ctx, element_size.ByteSize * uint64(nElements))
 						if err != nil {
-							return err
+							return log.Err(ctx, err, fmt.Sprintf("Could not find allocate memory %+v, %+v", element_size.ByteSize, uint64(nElements)))
 						}
 						resolves[r.Pointer.Address] = res
 					}
@@ -320,7 +320,7 @@ func Stream(
 				for _, r := range additionalReads {
 					tp, err := types.GetType(r.Type.TypeIndex)
 					if err != nil {
-						return err
+						return log.Err(ctx, err, fmt.Sprintf("Could not find type%+v", r.Type))
 					}
 
 					buf := &bytes.Buffer{}
@@ -332,7 +332,7 @@ func Stream(
 						return 0
 					}, state.MemoryLayout, e, tp, r.WriteObject)
 					if err != nil {
-						return err
+						return log.Err(ctx, err, fmt.Sprintf("Could not unbox type %+v   %+v", tp, r.WriteObject))
 					}
 					ptr := r.Pointer.Address
 					if (r.Pointer.Fictional) {
@@ -344,13 +344,14 @@ func Stream(
 					}
 					id, err := database.Store(ctx, buf.Bytes())
 					if err != nil {
-						return err
+						return log.Err(ctx, err, fmt.Sprintf("Could not store bytes %+v", buf))
 					}
 					writes=append(writes, write{
 						memory.Range{ptr, uint64(len(buf.Bytes()))},
 						id,
 					})
 				}
+				log.E(ctx, "")
 				// Now that we have unboxed and created the new memory properly,
 				// we can clone the command, and add our reads
 				newCmd := cmd.Clone(state.Arena)
@@ -385,5 +386,6 @@ func Stream(
 		)
 	}
 	err = api.ForeachCmd(ctx, c.Commands, true, doCmd)
+
 	return err
 }

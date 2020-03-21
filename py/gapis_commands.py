@@ -2,6 +2,7 @@ from gapis_types import type_manager
 import gapis_types
 import gapis.service.path.path_pb2 as Path
 import gapis.service.service_pb2 as Proto
+import gapis.service.memory_box.box_pb2 as Box
 
 class pointer(object):
   def __init__(self, handler, type, val):
@@ -16,7 +17,8 @@ class pointer(object):
     return "<{}>({})".format(self.type.name, self.val)
   def get_type(self):
     return self.type
-
+  def underlying(self):
+    return self.type.underlying()
   def set_dirty(self, offset):
     self.dirty[offset] = True
     self.handler.dirty_pointers[self] = True
@@ -44,6 +46,23 @@ class pointer(object):
     self.items[name] = value
     self.dirty[name] = True
 
+#Warning this may not actually work QUITE how you want
+# This will only encode any SEEN values, which is fine
+# if and ONLY if you don't keep this around till later
+  def get_encoded(self):
+    if len(self.items) == 0:
+      return
+    x = []
+    max_dirty = max(self.items, key=self.dirty.get)
+    for i in range (0, max_dirty + 1):
+      val = self.__getitem__(i)
+      x.append(encode_value(self.type.underlying(), val))
+    return Box.Value(
+      slice = Box.Slice(
+        values = x
+      )
+    )
+
 class struct(object):
   def __init__(self, handler, typename, ptr, offset):
     self.name = typename
@@ -70,9 +89,9 @@ class struct(object):
         raise TypeError()
       self.fields[name] = value
       dict.__setattr__(self, "_struct__dirty", True)
-      ptr = dict._getattr__(self, "_struct__pointer")
+      ptr = self.__pointer
       if ptr != None:
-        ptr.set_dirty(dict.__getattr__(self, "_struct__offset"))
+        ptr.set_dirty(self.__offset)
     else:
       super(struct, self).__setattr__(name, value)
 
@@ -102,15 +121,15 @@ def decode_type(handler, ptr, offset, tp, val):
       x.fields[fn] = fv
     return x
   if type(tp) == gapis_types.pointer_type:
-    return pointer(handler, tp, tp.get_value()(val))
+    return pointer(handler, tp, tp.get_value(val))
   if type(tp) == gapis_types.enum_type:
-    return tp.get_value()(val)
+    return tp.get_value(val)
   if type(tp) == gapis_types.pseudonym_type:
     return decode_type(handler, ptr, offset, tp.underlying(), val)
   if type(tp) == gapis_types.array_type:
-    return array(tp.get_value()(val), ptr, offset)
+    return array(tp.get_value(val), ptr, offset)
 
-  return tp.get_value()(val)
+  return tp.get_value(val)
 
 def default_value(handler, tp, ptr, offset):
   if type(tp) == gapis_types.struct_type:
@@ -125,6 +144,31 @@ def default_value(handler, tp, ptr, offset):
   if type(tp) == gapis_types.array_type:
     return array(tp.get_default_value(), ptr, offset)
   return tp.get_default_value()
+
+def encode_value(tp, val):
+  if type(tp) == gapis_types.struct_type:
+    x = []
+    for i in range(0, len(tp.fields_by_num)):
+      ft = tp.underlying(i)
+      fn = tp.field_names[i]
+      x.append(encode_value(ft, val.fields[fn]))
+    return Box.Value(
+      struct = Box.Struct(
+        fields = x
+      )
+    )
+  if type(tp) == gapis_types.pointer_type:
+    return Box.Value(
+      pointer = Box.Pointer(
+        address = val.val,
+        fictional = val.external_init
+      )
+    )
+  if type(tp) == gapis_types.array_type:
+    return Box.Array(
+      entries = tp.set_value(val.v)
+    )
+  return tp.set_value(val)
 
 class command(object):
   def __init__(self, handler, proto, tm):
