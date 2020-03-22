@@ -45,6 +45,7 @@ class pointer(object):
         raise TypeError()
     self.items[name] = value
     self.dirty[name] = True
+    self.set_dirty(name)
 
 #Warning this may not actually work QUITE how you want
 # This will only encode any SEEN values, which is fine

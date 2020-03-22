@@ -322,7 +322,6 @@ func Stream(
 					if err != nil {
 						return log.Err(ctx, err, fmt.Sprintf("Could not find type%+v", r.Type))
 					}
-
 					buf := &bytes.Buffer{}
 					e := memory.NewEncoder(endian.Writer(buf, state.MemoryLayout.GetEndian()), state.MemoryLayout)
 					err = memory_box.EncodeMemory(ctx, func(p uint64)uint64 {
@@ -351,10 +350,11 @@ func Stream(
 						id,
 					})
 				}
-				log.E(ctx, "")
+
 				// Now that we have unboxed and created the new memory properly,
 				// we can clone the command, and add our reads
 				newCmd := cmd.Clone(state.Arena)
+				newCmd.Extras().Add(cmd.Extras().All()...)
 				for _, w := range writes {
 					newCmd.Extras().GetOrAppendObservations().AddRead(w.rng, w.id)
 				}
@@ -371,7 +371,9 @@ func Stream(
 			return nil
 		}
 	}
-
+	state.OnError = func(err interface{}) {
+		log.E(ctx, "Error %+v", err)
+	}
 	if len(ic) > 0 {
 		err = api.ForeachCmd(ctx, ic, true, doCmd)
 		if err != nil {

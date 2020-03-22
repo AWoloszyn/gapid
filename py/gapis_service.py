@@ -132,10 +132,9 @@ class iter(object):
                 address= k.val,
                 fictional = k.external_init,
               ),
-              type=Path.Type(type_index=k.underlying().id),
+              type=Path.Type(type_index=slice_type.id),
               write_object = k.get_encoded()
             ))
-          print(objs)
           self.dirty_pointers = {}
           self.put(Proto.StreamCommandsRequest(
             put_memory = Proto.PutMemory(

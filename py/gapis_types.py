@@ -6,9 +6,10 @@ import gapis.service.service_pb2 as Proto
 import sys
 
 class type(object):
-  def __init__(self, type, api_path):
+  def __init__(self, type, api_path, id):
     self.name = type.name
     self.api_path = api_path
+    self.id = id
     pass
   def get_value(self, val):
     raise Exception("Unknown Type: {}".format(self.name))
@@ -496,7 +497,7 @@ class type_manager(object):
         API = api_path
       )
     )))
-    if type_info.error != None:
+    if type_info.HasField('error'):
       print("Error!! {}".format(type_info.error))
       raise TypeError()
     type_info = type_info.value
@@ -560,7 +561,7 @@ class type_manager(object):
       else:
         t = type(type_info.type, api_path)
     else:
-       t = type(type_info.type, api_path)
+       t = type(type_info.type, api_path, id)
 
     self.types[id] = t
     name = type_info.type.name

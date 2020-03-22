@@ -344,6 +344,7 @@ func EncodeMemory(ctx context.Context, ptrResolver func(uint64)uint64, l *device
 				return err
 			}
 		}
+		return nil
 	}
 	return fmt.Errorf("It is only valid to encode slice types")
 }
@@ -426,6 +427,7 @@ func Unbox(ctx context.Context, ptrResolver func(uint64)uint64, e *memory.Encode
 			}
 		}
 		e.Align(uint64(a))
+		return nil
 	case *types.Type_Sized:
 		switch t.Sized {
 		case types.SizedType_sized_int:
@@ -433,10 +435,13 @@ func Unbox(ctx context.Context, ptrResolver func(uint64)uint64, e *memory.Encode
 			return nil
 		case types.SizedType_sized_uint:
 			e.Uint(memory.Uint(v.Val.(*Value_Pod).Pod.Val.(*pod.Value_Uint64).Uint64))
+			return nil
 		case types.SizedType_sized_size:
 			e.Size(memory.Size(v.Val.(*Value_Pod).Pod.Val.(*pod.Value_Uint64).Uint64))
+			return nil
 		case types.SizedType_sized_char:
 			e.Char(memory.Char(v.Val.(*Value_Pod).Pod.Val.(*pod.Value_Uint8).Uint8))
+			return nil
 		}
 	case *types.Type_Pseudonym:
 		if elem, ok := types.TryGetType(t.Pseudonym.Underlying); ok {
@@ -455,8 +460,9 @@ func Unbox(ctx context.Context, ptrResolver func(uint64)uint64, e *memory.Encode
 					return err
 				}
 			}
+			return nil
 		} else {
-			return log.Err(ctx, nil, "Incomplete pseudonym type in unbox")
+			return log.Err(ctx, nil, "Incomplete array type in unbox")
 		}
 	case *types.Type_Enum:
 		if elem, ok := types.TryGetType(t.Enum.Underlying); ok {
@@ -471,5 +477,5 @@ func Unbox(ctx context.Context, ptrResolver func(uint64)uint64, e *memory.Encode
 	case *types.Type_Slice:
 		return log.Err(ctx, nil, "Cannot encode slices to memory")
 	}
-	return log.Err(ctx, nil, "Unhandled box type")
+	return log.Err(ctx, nil, "Unhandled unbox type")
 }
