@@ -23,6 +23,12 @@ type CmdExtra interface{}
 // CmdExtras is a list of CmdExtra objects.
 type CmdExtras []CmdExtra
 
+func (e *CmdExtras) Clear() {
+	if e != nil {
+		*e = (*e)[:0:0]
+	}
+}
+
 func (e *CmdExtras) All() CmdExtras {
 	if e == nil {
 		return nil

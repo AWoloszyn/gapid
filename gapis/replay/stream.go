@@ -354,7 +354,8 @@ func Stream(
 				// Now that we have unboxed and created the new memory properly,
 				// we can clone the command, and add our reads
 				newCmd := cmd.Clone(state.Arena)
-				newCmd.Extras().Add(cmd.Extras().All()...)
+				newCmd.Extras().Clear()
+				newCmd.Extras().MustClone(cmd.Extras().All()...)
 				for _, w := range writes {
 					newCmd.Extras().GetOrAppendObservations().AddRead(w.rng, w.id)
 				}
