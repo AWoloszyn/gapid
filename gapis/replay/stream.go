@@ -286,7 +286,6 @@ func Stream(
 				// #3   Mutate
 				// #4 If this WAS a fictional pointer, then free the memory as well
 				resolves := make(map[uint64]api.AllocResult)
-				temporaryAllocations := []api.AllocResult{}
 				writes := []write{}
 				// First gather all of the fictional pointers, and create
 				// allocations for them
@@ -350,7 +349,6 @@ func Stream(
 						id,
 					})
 				}
-
 				// Now that we have unboxed and created the new memory properly,
 				// we can clone the command, and add our reads
 				newCmd := cmd.Clone(state.Arena)
@@ -360,7 +358,7 @@ func Stream(
 					newCmd.Extras().GetOrAppendObservations().AddRead(w.rng, w.id)
 				}
 				err := newCmd.Mutate(ctx, cmdID, state, nil, nil)
-				for _, v := range temporaryAllocations {
+				for _, v := range resolves {
 					v.Free()
 				}
 				additionalReads = additionalReads[:0:0]

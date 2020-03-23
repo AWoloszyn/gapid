@@ -47,17 +47,14 @@ class pointer(object):
     self.dirty[name] = True
     self.set_dirty(name)
 
-#Warning this may not actually work QUITE how you want
-# This will only encode any SEEN values, which is fine
-# if and ONLY if you don't keep this around till later
-  def get_encoded(self):
+  def get_encoded(self, on_ptr):
     if len(self.items) == 0:
       return
     x = []
     max_dirty = max(self.items, key=self.dirty.get)
     for i in range (0, max_dirty + 1):
       val = self.__getitem__(i)
-      x.append(encode_value(self.type.underlying(), val))
+      x.append(encode_value(self.type.underlying(), val, on_ptr))
     return Box.Value(
       slice = Box.Slice(
         values = x
@@ -146,19 +143,21 @@ def default_value(handler, tp, ptr, offset):
     return array(tp.get_default_value(), ptr, offset)
   return tp.get_default_value()
 
-def encode_value(tp, val):
+def encode_value(tp, val, on_ptr):
   if type(tp) == gapis_types.struct_type:
     x = []
     for i in range(0, len(tp.fields_by_num)):
       ft = tp.underlying(i)
       fn = tp.field_names[i]
-      x.append(encode_value(ft, val.fields[fn]))
+      x.append(encode_value(ft, val.fields[fn], on_ptr))
     return Box.Value(
       struct = Box.Struct(
         fields = x
       )
     )
   if type(tp) == gapis_types.pointer_type:
+    if val.external_init:
+      on_ptr(val)
     return Box.Value(
       pointer = Box.Pointer(
         address = val.val,
